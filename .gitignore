@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded files (runtime data)
+backend/uploads/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Node / npm
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+
+# Vite
+frontend/.vite/
+
+# Test artefacts
+.pytest_cache/
+backend/.pytest_cache/
+backend/tests/__pycache__/
+backend/test.db
+htmlcov/
+.coverage
+coverage.xml
+
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo

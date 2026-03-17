@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: cloud_storage_backend
+    volumes:
+      - uploads_data:/app/uploads
+    environment:
+      DATABASE_URL: "sqlite:///./storage.db"
+      SECRET_KEY: "change-me-in-production-32chars+"
+      UPLOAD_DIR: "/app/uploads"
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: cloud_storage_nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app_network
+
+volumes:
+  uploads_data:
+
+networks:
+  app_network:
+    driver: bridge
