@@ -60,7 +60,7 @@ class Alias(Base):
     name: Mapped[str]
 
 DB_FILENAME = "db.sqlite"
-def init_db():
+def init():
     engine = create_engine(f"sqlite:///{DB_FILENAME}")
     create_tables(engine)
     pass
