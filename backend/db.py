@@ -1,7 +1,7 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, insert, select
 from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass, Mapped, mapped_column
 from sqlalchemy.orm.properties import ForeignKey
-
+import logging
 class Base(MappedAsDataclass, DeclarativeBase):
     pass
 
@@ -60,11 +60,39 @@ class Alias(Base):
     name: Mapped[str]
 
 DB_FILENAME = "db.sqlite"
+
 def init():
     engine = create_engine(f"sqlite:///{DB_FILENAME}")
     create_tables(engine)
+    return engine
     pass
 def create_tables(engine):
     with engine.connect() as conn:
         Base.metadata.create_all(conn)
         conn.commit()
+
+def add_user(engine, user):
+    with engine.connect() as conn:
+        conn.execute(
+            insert(User), [
+                user
+            ]
+        )
+        conn.commit()
+def user_exists(engine, name):
+    rows = None
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(User).where(User.name == name)
+        ).all()
+    logging.info(f"Number of users named {name}: {len(rows)}")
+    return len(rows) > 0
+
+def get_all_users(engine):
+    rows = None
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(User)
+        )
+
+    return rows
