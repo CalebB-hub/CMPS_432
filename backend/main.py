@@ -1,7 +1,5 @@
 import db
 import logging
-if __name__ == "__main__":
-    pass
 
 def testing():
     logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
@@ -20,4 +18,9 @@ def testing():
     rows = db.get_all_users(engine)
     for row in rows:
         logger.info(row.name)
+
+    logger.info(db.username_matches_password(engine, "jogn", "pass"))
     pass
+
+if __name__ == "__main__":
+    testing()

@@ -88,6 +88,17 @@ def user_exists(engine, name):
     logging.info(f"Number of users named {name}: {len(rows)}")
     return len(rows) > 0
 
+def username_matches_password(engine, name, password):
+    rows = None
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(User)
+            .where(User.name == name)
+            .where(User.password == password)
+        ).all()
+
+    return len(rows) > 0
+
 def get_all_users(engine):
     rows = None
     with engine.connect() as conn:
