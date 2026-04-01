@@ -67,6 +67,26 @@ class TestUser(TestCase):
 
         self.assertTrue(len(results) == 0, "User not was not removed properly")
 
+    def test_user_pass_matches(self):
+        engine = init_db()
+        user = {"name":"john", "password":"terrible"}
+
+        with engine.connect() as conn:
+            conn.execute(
+                db.insert(db.User),
+                [ user ]
+            )
+            conn.commit()
+
+        self.assertTrue(
+            db.user_pass_matches(engine, user['name'], user['password']),
+            "User and password should match"
+        )
+
+        self.assertFalse(
+            db.user_pass_matches(engine, user['name'], user['password'] + "NONSENSE EXTRA TEXT"),
+            "User and password shouldn't match"
+        )
 
 def exec_tests():
     test_main()

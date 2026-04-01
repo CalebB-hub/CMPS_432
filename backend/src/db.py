@@ -57,3 +57,17 @@ def remove_user(engine, name):
             .where(User.name == name)
         )
         conn.commit()
+
+def user_pass_matches(engine, name, password):
+    results = None
+    with engine.connect() as conn:
+        stmt = (
+            select(User)
+            .where(User.name == name)
+            .where(User.password == password)
+        )
+        results = conn.execute(
+            stmt
+        ).all()
+
+    return len(results) > 0
