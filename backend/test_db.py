@@ -91,6 +91,26 @@ class TestUser(TestCase):
             "User and password shouldn't match"
         )
         engine.dispose()
+    def test_user_exists(self):
+        engine = init_db()
+        user = {"name":"john", "password":"pizza"}
+        other_user = {"name":"terry", "password":"temple"}
+        self.assertFalse(
+            db.user_exists(engine, user['name']),
+            "User is not supposed to exist at this point"
+        )
+        db.add_user(engine, user)
+
+        self.assertTrue(
+            db.user_exists(engine, user['name']),
+            "User should exist but doesn't"
+        )
+        self.assertFalse(
+            db.user_exists(engine, other_user['name']),
+            "User should not exist"
+        )
+        engine.dispose()
+
 
 class TestItem(TestCase):
     def test_add_item(self):
