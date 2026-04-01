@@ -1,6 +1,6 @@
-from sqlalchemy import create_engine, text, insert, select
+from sqlalchemy import create_engine, text, insert, select, delete
 import logging
-from tables import *
+from .tables import *
 
 DB_FILENAME = "db.sqlite"
 
@@ -47,6 +47,13 @@ def get_all_users(engine):
     with engine.connect() as conn:
         rows = conn.execute(
             select(User)
-        )
-
+        ).all()
     return rows
+
+def remove_user(engine, name):
+    with engine.connect() as conn:
+        conn.execute(
+            delete(User)
+            .where(User.name == name)
+        )
+        conn.commit()
