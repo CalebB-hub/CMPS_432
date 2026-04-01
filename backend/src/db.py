@@ -71,3 +71,32 @@ def user_pass_matches(engine, name, password):
         ).all()
 
     return len(results) > 0
+
+def add_item(engine, item):
+    with engine.connect() as conn:
+        conn.execute(
+            insert(Item),
+            [ item ]
+        )
+        conn.commit()
+def remove_item(engine, item_id):
+    with engine.connect() as conn:
+        conn.execute(
+            delete(Item)
+            .where(Item.id == item_id)
+        )
+        conn.commit()
+def add_tag(engine, tag):
+    with engine.connect() as conn:
+        conn.execute(
+            insert(Tag),
+            [ tag ]
+        )
+        conn.commit()
+def remove_tag(engine, tag_id):
+    with engine.connect() as conn:
+        conn.execute(
+            delete(Tag)
+            .where(Tag.id == tag_id)
+        )
+        conn.commit()
