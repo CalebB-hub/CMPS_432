@@ -210,7 +210,23 @@ class TestTag(TestCase):
         )
         engine.dispose()
 
+    def test_add_tag_relation(self):
+        engine = init_db()
+        child_id = 0
+        parent_id = 1
 
+        db.add_tag_relation(engine, child_id, parent_id)
+        with engine.connect() as conn:
+            results = conn.execute(
+                db.select(db.TagTag)
+                .where(db.TagTag.child_id == child_id)
+                .where(db.TagTag.parent_id == parent_id)
+            ).all()
+        self.assertTrue(
+            len(results) == 1,
+            "Tag was not added successfully"
+        )
+        engine.dispose()
 def exec_tests():
     test_main()
     pass

@@ -157,3 +157,11 @@ def remove_tag(engine, tag_id):
             .where(Tag.id == tag_id)
         )
         conn.commit()
+def add_tag_relation(engine, child_id, parent_id):
+    relation = {"child_id":child_id, "parent_id":parent_id}
+    with engine.connect() as conn:
+        conn.execute(
+            insert(TagTag),
+            [relation]
+        )
+        conn.commit()
