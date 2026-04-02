@@ -20,6 +20,21 @@ def testing():
         logger.info(row.name)
 
     logger.info(db.username_matches_password(engine, "jogn", "pass"))
+    
+    item = {"name":"burger", "path":"https://burger.com", "user_id": 2}
+    item_id = db.add_item(engine, item)
+    print(f"item_id: {item_id}")
+
+    tags = [
+            {"name":"food", "user_id":2},
+            {"name":"delicious", "user_id":2},
+            {"name":"lunch", "user_id":2}
+    ]
+    other_tag = {"name":"lunch","user_id":3}
+
+    
+    db.add_item_with_tags(engine, item, tags)
+    
     pass
 
 if __name__ == "__main__":

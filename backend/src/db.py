@@ -130,12 +130,15 @@ def user_pass_matches(engine, name, password):
     return len(results) > 0
 
 def add_item(engine, item):
+    results = None
     with engine.connect() as conn:
-        conn.execute(
-            insert(Item),
+        results = conn.execute(
+            insert(Item)
+            .returning(Item.id),
             [ item ]
-        )
+        ).all()
         conn.commit()
+    return results[0][0]
 def remove_item(engine, item_id):
     with engine.connect() as conn:
         conn.execute(
@@ -144,12 +147,15 @@ def remove_item(engine, item_id):
         )
         conn.commit()
 def add_tag(engine, tag):
+    results = None
     with engine.connect() as conn:
-        conn.execute(
-            insert(Tag),
+        results = conn.execute(
+            insert(Tag)
+            .returning(Tag.id),
             [ tag ]
-        )
+        ).all()
         conn.commit()
+    return results[0][0]
 def remove_tag(engine, tag_id):
     with engine.connect() as conn:
         conn.execute(
@@ -165,3 +171,63 @@ def add_tag_relation(engine, child_id, parent_id):
             [relation]
         )
         conn.commit()
+def add_tags(engine, tags):
+    results = None
+    with engine.connect() as conn:
+        results = conn.execute(
+            insert(Tag)
+            .returning(Tag.id),
+            tags
+        ).all()
+        conn.commit()
+
+    return results
+def get_tag_id(engine, tag):
+    results = None
+    with engine.connect() as conn:
+        results = conn.execute(
+                select(Tag.id)
+                .where(Tag.name == tag['name'] )
+                .where(Tag.user_id == tag['user_id'])
+        ).all()
+    if len(results) == 0: return -1
+    return results[0][0]
+def tag_exists(engine, tag):
+    return get_tag_id(engine, tag) != -1
+def get_tag_item_relation_id(engine, item_id, tag_id):
+    results = None
+    with engine.connect() as conn:
+        results = conn.execute(
+            select(TagItem)
+            .where(TagItem.item_id == item_id)
+            .where(TagItem.tag_id == tag_id)
+        ).all()
+    if len(results) == 0: return -1
+    return results[0][0]
+def tag_item_relation_exists(engine, item_id, tag_id):
+    return get_tag_item_relation_id(engine, item_id, tag_id) != -1
+def add_tag_item_relation(engine, item_id, tag_id):
+    with engine.connect() as conn:
+        conn.execute(
+            insert(TagItem),
+            [ {"item_id":item_id, "tag_id":tag_id} ]
+        )
+        conn.commit()
+def add_tags_to_item(engine, item_id, tag_ids):
+    for tag_id in tag_ids:
+        if tag_item_relation_exists(engine, item_id, tag_id): continue
+        add_tag_item_relation(engine, item_id, tag_id)
+def add_item_with_tags(engine, item, tags):
+    user_id = item['user_id']
+    item_id = add_item(engine, item)
+    
+    tag_ids = []
+
+    for tag in tags:
+        tag_id = get_tag_id(engine, tag)
+        if tag_id == -1:
+            tag_id = add_tag(engine, tag)
+        tag_ids.append(tag_id)
+    
+    for tag_id in tag_ids:
+        add_tags_to_item(engine, item_id, [tag_id])
