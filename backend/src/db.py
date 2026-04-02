@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text, insert, select, delete
+from sqlalchemy import create_engine, text, insert, select, delete, intersect, join, intersect_all
 import logging
 from sqlalchemy.orm import MappedAsDataclass, DeclarativeBase, mapped_column, Mapped
 from sqlalchemy.orm.properties import ForeignKey
@@ -217,6 +217,13 @@ def add_tags_to_item(engine, item_id, tag_ids):
     for tag_id in tag_ids:
         if tag_item_relation_exists(engine, item_id, tag_id): continue
         add_tag_item_relation(engine, item_id, tag_id)
+def get_tag_ids(engine, tags):
+    tag_ids = []
+    for tag in tags:
+        tag_ids.append(get_tag_id(engine, tag))
+    return tag_ids
+
+
 def add_item_with_tags(engine, item, tags):
     user_id = item['user_id']
     item_id = add_item(engine, item)
@@ -231,3 +238,23 @@ def add_item_with_tags(engine, item, tags):
     
     for tag_id in tag_ids:
         add_tags_to_item(engine, item_id, [tag_id])
+def get_items_with_tags(engine, tags):
+    if len(tags) == 0: return None
+    tag_ids = get_tag_ids(engine, tags)
+    selects = []
+    for tag_id in tag_ids:
+        selects.append(
+            select(Item.id, Item.name, Item.user_id)
+            .select_from(join(TagItem, Item))
+            .where(TagItem.tag_id == tag_id)
+        )
+
+    stmt = intersect(*selects)
+    results = None
+    with engine.connect() as conn:
+        results = conn.execute(
+            stmt
+        ).all()
+
+    return results
+

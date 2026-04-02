@@ -34,7 +34,7 @@ def testing():
 
     
     db.add_item_with_tags(engine, item, tags)
-    
+    print(db.get_items_with_tags(engine, tags))
     pass
 
 if __name__ == "__main__":
