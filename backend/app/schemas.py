@@ -70,3 +70,17 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+
+# ── Feedback schemas ─────────────────────────────────────────────────────────
+
+class FeedbackCreate(BaseModel):
+    text: str
+
+
+class FeedbackRead(FeedbackCreate):
+    id: int
+    user_id: Optional[int] = None
+    created_at: datetime.datetime
+
+    model_config = {"from_attributes": True}

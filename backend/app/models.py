@@ -49,3 +49,14 @@ class File(Base):
 
     owner = relationship("User", back_populates="files")
     tags = relationship("Tag", secondary=file_tag, back_populates="files")
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")

@@ -2,7 +2,10 @@
   <div id="app">
     <nav v-if="auth.user" class="navbar">
       <span class="brand">☁ Cloud Storage</span>
-      <span class="user-info">{{ auth.user.username }}</span>
+      <div class="nav-center">
+        <router-link to="/dashboard" class="nav-link">Dashboard</router-link>
+        <router-link to="/settings" class="nav-link">Settings</router-link>
+      </div>
       <button class="btn-logout" @click="handleLogout">Logout</button>
     </nav>
     <router-view />
@@ -52,6 +55,26 @@ body {
   font-size: 1.2rem;
   font-weight: 700;
   flex: 1;
+}
+
+.nav-center {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.nav-link {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+.nav-link:hover,
+.nav-link.router-link-active {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .btn-logout {
