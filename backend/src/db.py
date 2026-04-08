@@ -125,7 +125,25 @@ class PocketDB:
         if item_id == -1:
             self._add_item(user_id=user_id, name=name, path=path)
 
+    def _get_tag_id(self, name, user_id):
+        stmt = select(Tag.id).where(Tag.name == name).where(Tag.user_id == user_id)
+        results = self._exec(stmt=stmt, params=None, get_results=True)
 
+        if len(results) == 0: return -1
+        return results[0][0]
 
+    def _add_tag(self, name, user_id):
+        stmt = insert(Tag)
+        params = [{"name":name, "user_id":user_id}]
+        self._exec(stmt=stmt, params=params)
+
+    def add_tag(self, name, username):
+        user_id = self._get_user_id(name=username)
+        if user_id == -1:
+            return
+
+        tag_id = self._get_tag_id(name=name, user_id=user_id)
+        if tag_id == -1:
+            self._add_tag(name=name, user_id=user_id)
 
         pass
