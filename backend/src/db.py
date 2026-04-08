@@ -76,9 +76,9 @@ class PocketDB:
     def _exec(self, stmt, params=[], get_results=False):
         results = None
         with self._engine.connect() as conn:
-            print("~~~~~~~~~~~~~~~~~~~~~~")
-            print(f"stmt: {stmt}")
-            print(f"params: {params}")
+            # print("~~~~~~~~~~~~~~~~~~~~~~")
+            # print(f"stmt: {stmt}")
+            # print(f"params: {params}")
 
             results = conn.execute(
                 stmt,
@@ -182,3 +182,71 @@ class PocketDB:
         tagitem_id = self._get_tagitem_id(item_id=item_id, tag_id=tag_id)
         if tagitem_id == -1:
             self._add_tagitem(item_id=item_id, tag_id=tag_id)
+
+    def _get_tagtag_id(self, parent_id:int, child_id:int) -> int:
+        stmt = (
+            select(TagTag.id)
+            .where(TagTag.parent_id == parent_id)
+            .where(TagTag.child_id == child_id)
+        )
+        results = self._exec(stmt=stmt, params=None, get_results=True)
+        if len(results) == 0:
+            return -1
+        return results[0][0]
+
+    def _add_tagtag(self, parent_id:int, child_id:int):
+        stmt = (
+            insert(TagTag)
+        )
+        params = [{"parent_id":parent_id, "child_id":child_id}]
+        self._exec(stmt=stmt, params=params)
+
+    def add_tag_relation(self, user:str, parent:str, child:str):
+        user_id = self._get_user_id(name=user)
+        if user_id == -1:
+            return
+
+        parent_id = self._get_tag_id(user_id=user_id, name=parent)
+        child_id = self._get_tag_id(user_id=user_id, name=child)
+
+        if -1 in [parent_id, child_id]:
+            return
+
+        tagtag_id = self._get_tagtag_id(parent_id=parent_id, child_id=child_id)
+        if tagtag_id == -1:
+            self._add_tagtag(parent_id=parent_id, child_id=child_id)
+
+    def _get_tag_children(self, tag_id:int):
+        stmt = select(TagTag.child_id).where(TagTag.parent_id == tag_id)
+        results = self._exec(stmt=stmt, params=None, get_results=True)
+        children = [x[0] for x in results]
+        return children
+
+    def _get_tag_lineage_helper(self, user_id:int, tag_id:int, lineage:list[int]):
+        children = self._get_tag_children(tag_id=tag_id)
+        pass
+    def _get_tag_lineage(self, user_id:int, tag_id:int) -> list[int]:
+        lineage = []
+        self._get_tag_lineage_helper(user_id=user_id, tag_id=tag_id, lineage=lineage)
+        return lineage
+
+    '''
+    items must have each tag represented (if that tag is not on the item,
+    then one of it's descendents must be on the item)
+    '''
+    def get_items_by_tags(self, user:str, tags:list[str]) -> list[str]:
+        user_id = self._get_user_id(name=user)
+        if user_id == -1:
+            return []
+
+        if len(tags) == 0:
+            return []
+
+        tag_lineages = [[]] * 8
+        for i in range(len(tags)):
+            tag = tags[i]
+            tag_id = self._get_tag_id(user_id=user_id, name=tag)
+            if tag_id == -1:
+                continue
+
+            tag_lineages[i] = self._get_tag_lineage(user_id=user_id, tag_id=tag_id)

@@ -95,6 +95,71 @@ class TestPocketDB(TestCase):
             tagitem_id, 1
         )
 
+    def test_add_tag_relation(self):
+        db = PocketDB()
+
+        user = "ethan"
+        password = "pizza"
+
+        db.add_user(name=user, password=password)
+        user_id = db._get_user_id(name=user)
+
+        parent = "food"
+        child = "fruit"
+        db.add_tag(name=parent, user=user)
+        db.add_tag(name=child, user=user)
+
+        parent_id = db._get_tag_id(user_id=user_id, name=parent)
+        child_id = db._get_tag_id(user_id=user_id, name=child)
+        tagtag_id = db._get_tagtag_id(parent_id=parent_id, child_id=child_id)
+        self.assertEqual(
+            tagtag_id, -1
+        )
+        db.add_tag_relation(user=user, parent="food", child="fruit")
+
+        tagtag_id = db._get_tagtag_id(parent_id=parent_id, child_id=child_id)
+        self.assertEqual(
+            tagtag_id, 1
+        )
+    def test_get_tag_children(self):
+        db = PocketDB()
+
+        user = "ethan"
+        password = "pizza"
+        db.add_user(name=user, password=password)
+        user_id = db._get_user_id(name=user)
+
+        db.add_tag(user=user, name="food")
+        db.add_tag(user=user, name="fruit")
+        db.add_tag(user=user, name="burger")
+        db.add_tag(user=user, name="apple")
+
+
+        db.add_tag_relation(user=user, parent="food", child="fruit")
+        db.add_tag_relation(user=user, parent="food", child="burger")
+
+        db.add_tag_relation(user=user, parent="fruit", child="apple")
+
+        def print_tag_id(tag):
+            print(tag, db._get_tag_id(user_id=user_id, name=tag))
+
+        print_tag_id("food")
+        print_tag_id("fruit")
+        print_tag_id("burger")
+        print_tag_id("apple")
+
+        def print_children(tag):
+            print(
+                tag,
+                db._get_tag_children(
+                    tag_id=db._get_tag_id(user_id=user_id, name=tag)
+                )
+            )
+
+        print_children("food")
+        print_children("fruit")
+        print_children("burger")
+        print_children("apple")
 
 
 
