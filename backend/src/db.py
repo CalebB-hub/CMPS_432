@@ -118,8 +118,8 @@ class PocketDB:
         params = [{"user_id":user_id, "name":name, "path":path}]
         self._exec(stmt, params)
 
-    def add_item(self, username, name, path):
-        user_id = self._get_user_id(name=username)
+    def add_item(self, user, name, path):
+        user_id = self._get_user_id(name=user)
         if user_id == -1:
             return
 
@@ -139,8 +139,8 @@ class PocketDB:
         params = [{"name":name, "user_id":user_id}]
         self._exec(stmt=stmt, params=params)
 
-    def add_tag(self, name, username):
-        user_id = self._get_user_id(name=username)
+    def add_tag(self, name, user):
+        user_id = self._get_user_id(name=user)
         if user_id == -1:
             return
 
