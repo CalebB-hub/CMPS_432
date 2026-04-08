@@ -87,6 +87,8 @@ class PocketDB:
 
         if get_results:
             return results.all()
+        else:
+            return []
 
     def _get_user_id(self, name):
         stmt = select(User.id).where(User.name == name)
@@ -145,5 +147,3 @@ class PocketDB:
         tag_id = self._get_tag_id(name=name, user_id=user_id)
         if tag_id == -1:
             self._add_tag(name=name, user_id=user_id)
-
-        pass
