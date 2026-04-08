@@ -64,6 +64,43 @@ class TestPocketDB(TestCase):
         )
 
 
+    def test_add_tagitem(self):
+        db = PocketDB()
+
+        user = "ethan"
+        password = "pass"
+        db.add_user(name=user, password=password)
+
+
+        item = "burger"
+        path = "https://burger.com"
+        db.add_item(name=item, path=path, user=user)
+
+        tag = "food"
+        db.add_tag(user=user, name=tag)
+
+        user_id = db._get_user_id(name=user)
+        item_id = db._get_item_id(user_id=user_id, name=item)
+        tag_id = db._get_tag_id(user_id=user_id, name=tag)
+
+        tagitem_id = db._get_tagitem_id(item_id=item_id, tag_id=tag_id)
+        self.assertEqual(
+            tagitem_id, -1
+        )
+
+        db.assign_tag(user=user, item=item, tag=tag)
+
+        tagitem_id = db._get_tagitem_id(item_id=item_id, tag_id=tag_id)
+        self.assertEqual(
+            tagitem_id, 1
+        )
+
+
+
+
+
+
+
 
 
 

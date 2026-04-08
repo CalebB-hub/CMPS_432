@@ -1,3 +1,4 @@
+from re import A
 from sqlalchemy import create_engine, text, insert, select, delete, intersect, join, intersect_all
 import logging
 from sqlalchemy.orm import MappedAsDataclass, DeclarativeBase, mapped_column, Mapped
@@ -147,3 +148,37 @@ class PocketDB:
         tag_id = self._get_tag_id(name=name, user_id=user_id)
         if tag_id == -1:
             self._add_tag(name=name, user_id=user_id)
+
+    def _get_tagitem_id(self, item_id:int, tag_id:int):
+        stmt = (
+            select(TagItem.id)
+            .where(TagItem.item_id == item_id)
+            .where(TagItem.tag_id == tag_id)
+        )
+        results = self._exec(stmt, params=None, get_results=True)
+        if len(results) == 0: return -1
+        return results[0][0]
+
+    def _add_tagitem(self, item_id:int, tag_id:int):
+        stmt = (
+            insert(TagItem)
+        )
+        params = [{"item_id":item_id, "tag_id":tag_id}]
+        self._exec(stmt=stmt, params=params)
+
+    def assign_tag(self, user:str, item:str, tag:str):
+        user_id = self._get_user_id(name=user)
+        if user_id == -1:
+            return
+
+        item_id = self._get_item_id(name=item, user_id=user_id)
+        if item_id == -1:
+            return
+
+        tag_id = self._get_tag_id(name=tag, user_id=user_id)
+        if tag_id == -1:
+            return
+
+        tagitem_id = self._get_tagitem_id(item_id=item_id, tag_id=tag_id)
+        if tagitem_id == -1:
+            self._add_tagitem(item_id=item_id, tag_id=tag_id)
