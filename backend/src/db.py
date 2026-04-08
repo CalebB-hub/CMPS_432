@@ -61,11 +61,12 @@ class Alias(Base):
 
 DB_FILENAME = "db.sqlite"
 
-def init():
-    engine = create_engine(f"sqlite:///{DB_FILENAME}")
+def init(filename=DB_FILENAME):
+    engine = create_engine(f"sqlite:///{filename}")
     create_tables(engine)
     return engine
     pass
+
 def create_tables(engine):
     with engine.connect() as conn:
         Base.metadata.create_all(conn)
@@ -227,7 +228,7 @@ def get_tag_ids(engine, tags):
 def add_item_with_tags(engine, item, tags):
     user_id = item['user_id']
     item_id = add_item(engine, item)
-    
+
     tag_ids = []
 
     for tag in tags:
@@ -235,7 +236,7 @@ def add_item_with_tags(engine, item, tags):
         if tag_id == -1:
             tag_id = add_tag(engine, tag)
         tag_ids.append(tag_id)
-    
+
     for tag_id in tag_ids:
         add_tags_to_item(engine, item_id, [tag_id])
 def get_items_with_tags(engine, tags):
@@ -258,3 +259,27 @@ def get_items_with_tags(engine, tags):
 
     return results
 
+def get_tag_children(engine, tag_id):
+    results = None
+    with engine.connect() as conn:
+        results = conn.execute(
+            select(Tag.id)
+            .join(TagTag, Tag.id == TagTag.child_id)
+            .where(TagTag.parent_id == tag_id)
+        ).all()
+
+    return results
+
+def get_tag_descendents(engine, tag_id, descendents):
+    children = get_tag_children(engine, tag_id)
+    if len(children) == 0: return
+
+    descendents = []
+    for child in children:
+        child_id = child[0]
+        if child_id == tag_id or child_id in descendents: continue
+        child_descendents = [child_id]
+        get_tag_descendents(engine, child_id, child_descendents)
+        descendents += child_descendents
+
+    return
