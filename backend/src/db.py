@@ -111,6 +111,11 @@ class PocketDB:
         if len(results) == 0: return -1
         return results[0][0]
 
+    def _add_item(self, user_id, name, path):
+        stmt = insert(Item)
+        params = [{"user_id":user_id, "name":name, "path":path}]
+        self._exec(stmt, params)
+
     def add_item(self, username, name, path):
         user_id = self._get_user_id(name=username)
         if user_id == -1:
