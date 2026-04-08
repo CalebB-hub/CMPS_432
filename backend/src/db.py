@@ -100,7 +100,27 @@ class PocketDB:
         self._exec(stmt, params)
 
     def add_user(self, name, password):
-        user_id = self._get_user_id(name)
+        user_id = self._get_user_id(name=name)
         if user_id == -1:
-            self._add_user(name, password)
+            self._add_user(name=name, password=password)
+        pass
+
+    def _get_item_id(self, user_id, name):
+        stmt = select(Item.id).where(Item.name == name).where(Item.user_id == user_id)
+        results = self._exec(stmt=stmt, params=None, get_results=True)
+        if len(results) == 0: return -1
+        return results[0][0]
+
+    def add_item(self, username, name, path):
+        user_id = self._get_user_id(name=username)
+        if user_id == -1:
+            return
+
+        item_id = self._get_item_id(user_id=user_id, name=name)
+        if item_id == -1:
+            self._add_item(user_id=user_id, name=name, path=path)
+
+
+
+
         pass
