@@ -1,5 +1,5 @@
 from re import A
-from sqlalchemy import create_engine, text, insert, select, delete, intersect, join, intersect_all
+from sqlalchemy import create_engine, text, insert, select, delete, intersect, join, intersect_all, union_all
 import logging
 from sqlalchemy.orm import MappedAsDataclass, DeclarativeBase, mapped_column, Mapped
 from sqlalchemy.orm.properties import ForeignKey
@@ -261,6 +261,22 @@ class PocketDB:
     items must have each tag represented (if that tag is not on the item,
     then one of it's descendents must be on the item)
     '''
+    def _mk_select_for_items_with_tag(self, tag_id:int):
+        return (
+            select(Item)
+            .join(TagItem, Item.id == TagItem.item_id)
+            .where(TagItem.tag_id == tag_id)
+        )
+    def _mk_select_for_items_with_lineage(self, lineage:list[int]):
+        select_stmts = [self._mk_select_for_items_with_tag(tag_id=x) for x in lineage]
+        return union_all(
+            *select_stmts
+        )
+    def _mk_select_for_items_with_multiple_lineages(self, lineages:list[list[int]]):
+        lineage_selects = [self._mk_select_for_items_with_lineage(lineage=x) for x in lineages]
+        return intersect_all(
+            *lineage_selects
+        )
     def get_items_by_tags(self, user:str, tags:list[str]) -> list[str]:
         user_id = self._get_user_id(name=user)
         if user_id == -1:
@@ -277,3 +293,12 @@ class PocketDB:
                 continue
 
             tag_lineages[i] = self._get_tag_lineage(user_id=user_id, tag_id=tag_id)
+
+        '''
+        for each lineage:
+            for each tag:
+                select all items with that tag
+            union all the selections for each tag together
+
+        intersect all lineages
+        '''
