@@ -160,6 +160,59 @@ class TestPocketDB(TestCase):
         print_children("fruit")
         print_children("burger")
         print_children("apple")
+    def test_get_tag_lineage(self):
+        db = PocketDB()
+
+        user = "ethan"
+        password = "pizza"
+        db.add_user(name=user, password=password)
+        user_id = db._get_user_id(name=user)
+
+        db.add_tag(user=user, name="food")
+        db.add_tag(user=user, name="fruit")
+        db.add_tag(user=user, name="burger")
+        db.add_tag(user=user, name="apple")
+        db.add_tag(user=user, name="macintosh")
+
+
+        db.add_tag_relation(user=user, parent="food", child="fruit")
+        db.add_tag_relation(user=user, parent="food", child="burger")
+
+        db.add_tag_relation(user=user, parent="fruit", child="apple")
+        db.add_tag_relation(user=user, parent="apple", child="macintosh")
+
+        def print_tag_id(tag):
+            print(tag, db._get_tag_id(user_id=user_id, name=tag))
+        print()
+        print()
+        print_tag_id("food")
+        print_tag_id("fruit")
+        print_tag_id("burger")
+        print_tag_id("apple")
+        print_tag_id("macintosh")
+
+        def print_tag_lineage(tag):
+            print(
+                f"{tag}\n",
+                db._get_tag_lineage(
+                    tag_id=db._get_tag_id(user_id=user_id, name=tag),
+                    user_id=user_id
+                )
+            )
+        print_tag_lineage("food")
+        print_tag_lineage("fruit")
+        print_tag_lineage("burger")
+        print_tag_lineage("apple")
+        print_tag_lineage("macintosh")
+
+        # test loop
+        db.add_tag_relation(user=user, parent="macintosh", child="food")
+        print_tag_lineage("food")
+
+        # test self parent
+        db.add_tag_relation(user=user, parent="food", child="food")
+        print_tag_lineage("food")
+
 
 
 

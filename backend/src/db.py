@@ -222,9 +222,36 @@ class PocketDB:
         children = [x[0] for x in results]
         return children
 
-    def _get_tag_lineage_helper(self, user_id:int, tag_id:int, lineage:list[int]):
+    def _get_list_difference(self, list_a:list, list_b:list) -> list:
+        set_difference = set(list_a) - set(list_b)
+        return list(set_difference)
+
+    def _get_tag_lineage_helper_deprecated(self, user_id:int, tag_id:int, lineage:list[int]):
+        # print(lineage)
         children = self._get_tag_children(tag_id=tag_id)
+        lineage.append(tag_id)
+        children = self._get_list_difference(children, lineage)
+        # print(children)
+        for tag in children:
+            self._get_tag_lineage_helper(user_id=user_id, tag_id=tag, lineage=lineage)
+
+        '''
+        1. remove tags already in lineage from children of initial tag
+        2. if no children left return list with just initial tag
+        3. go through remaining tags and add each of their lineages to the overall lineage
+        '''
+
         pass
+    def _get_tag_lineage_helper(self, user_id:int, tag_id:int, lineage:list[int]):
+        if tag_id in lineage:
+            return
+
+        lineage.append(tag_id)
+
+        children = self._get_tag_children(tag_id=tag_id)
+        for child in children:
+            self._get_tag_lineage_helper(user_id=user_id, tag_id=child, lineage=lineage)
+
     def _get_tag_lineage(self, user_id:int, tag_id:int) -> list[int]:
         lineage = []
         self._get_tag_lineage_helper(user_id=user_id, tag_id=tag_id, lineage=lineage)
