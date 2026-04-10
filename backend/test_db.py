@@ -213,6 +213,85 @@ class TestPocketDB(TestCase):
         db.add_tag_relation(user=user, parent="food", child="food")
         print_tag_lineage("food")
 
+    def test_get_items_by_tags(self):
+        db = PocketDB()
+
+        user = "ethan"
+        password = "pizza"
+        db.add_user(name=user, password=password)
+        user_id = db._get_user_id(name=user)
+
+        db.add_tag(user=user, name="food")
+        db.add_tag(user=user, name="fruit")
+        db.add_tag(user=user, name="burger")
+        db.add_tag(user=user, name="apple")
+        db.add_tag(user=user, name="macintosh")
+
+
+        db.add_tag_relation(user=user, parent="food", child="fruit")
+        db.add_tag_relation(user=user, parent="food", child="burger")
+
+        db.add_tag_relation(user=user, parent="fruit", child="apple")
+        db.add_tag_relation(user=user, parent="apple", child="macintosh")
+
+        def print_tag_id(tag):
+            print(tag, db._get_tag_id(user_id=user_id, name=tag))
+        print()
+        print()
+        print_tag_id("food")
+        print_tag_id("fruit")
+        print_tag_id("burger")
+        print_tag_id("apple")
+        print_tag_id("macintosh")
+
+        def print_tag_lineage(tag):
+            print(
+                f"{tag}\n",
+                db._get_tag_lineage(
+                    tag_id=db._get_tag_id(user_id=user_id, name=tag),
+                    user_id=user_id
+                )
+            )
+        print_tag_lineage("food")
+        print_tag_lineage("fruit")
+        print_tag_lineage("burger")
+        print_tag_lineage("apple")
+        print_tag_lineage("macintosh")
+
+        # test loop
+        db.add_tag_relation(user=user, parent="macintosh", child="food")
+        print_tag_lineage("food")
+
+        # test self parent
+        db.add_tag_relation(user=user, parent="food", child="food")
+        print_tag_lineage("food")
+
+        apple_item = "green apple"
+        apple_path = "https://images.com/green-apple.png"
+        db.add_item(user="ethan", name=apple_item, path=apple_path)
+        db.assign_tag(user="ethan", tag="apple", item="apple_item")
+
+        db.add_user(name='john', password='pass')
+        db.add_tag(name='clothing', user='john')
+        db.add_tag(name='headwear', user='john')
+        db.add_tag_relation(user='john', parent='clothing', child='headwear')
+
+        db.add_tag(user='john', name='stylish')
+
+        db.add_item(name='hat', path='hat.com', user='john')
+        db.assign_tag(user='john', tag='headwear', item='hat')
+
+        db.add_item(name='sunglasses', path='suncentral.net', user='john')
+        db.assign_tag(user='john', tag='headwear', item='sunglasses')
+        db.assign_tag(user='john', tag='stylish', item='sunglasses')
+
+        print(
+            db.get_items_by_tags(user='john', tags=['clothing'])
+        )
+        print(
+            db.get_items_by_tags(user='john', tags=['clothing', 'stylish'])
+        )
+
 
 
 

@@ -1,5 +1,5 @@
 from re import A
-from sqlalchemy import create_engine, text, insert, select, delete, intersect, join, intersect_all, union_all
+from sqlalchemy import create_engine, text, insert, select, delete, intersect, join, intersect_all, union_all, union
 import logging
 from sqlalchemy.orm import MappedAsDataclass, DeclarativeBase, mapped_column, Mapped
 from sqlalchemy.orm.properties import ForeignKey
@@ -76,9 +76,11 @@ class PocketDB:
     def _exec(self, stmt, params=[], get_results=False):
         results = None
         with self._engine.connect() as conn:
-            # print("~~~~~~~~~~~~~~~~~~~~~~")
-            # print(f"stmt: {stmt}")
-            # print(f"params: {params}")
+            print("~~~~~~~~~~~~~~~~~~~~~~")
+            print("SQLSTMT")
+            print(f"stmt: {stmt}")
+            print(f"params: {params}")
+            print("~~~~~~~~~~~~~~~~~~~~~~")
 
             results = conn.execute(
                 stmt,
@@ -262,14 +264,29 @@ class PocketDB:
     then one of it's descendents must be on the item)
     '''
     def _mk_select_for_items_with_tag(self, tag_id:int):
-        return (
+        stmt = (
             select(Item)
             .join(TagItem, Item.id == TagItem.item_id)
             .where(TagItem.tag_id == tag_id)
         )
+        return stmt
+    def _mk_stmt_get_items_by_multiple_lineages(self, lineages:list[list[int]]):
+        get_items = select(Item).join(TagItem, Item.id == TagItem.item_id).cte()
+        item_select = select(Item).select_from(get_items)
+
+        lineage_selects = []
+        for lineage in lineages:
+            item_selects = [item_select.where(TagItem.tag_id == tag_id) for tag_id in lineage]
+            # print(f"\n\n{item_selects}\n\n")
+            lineage_select = select(Item).select_from(union(*item_selects).subquery())
+            lineage_selects.append(lineage_select)
+
+        select_multiple_lineages = intersect_all(*lineage_selects)
+        return select_multiple_lineages
+
     def _mk_select_for_items_with_lineage(self, lineage:list[int]):
         select_stmts = [self._mk_select_for_items_with_tag(tag_id=x) for x in lineage]
-        return union_all(
+        return union(
             *select_stmts
         )
     def _mk_select_for_items_with_multiple_lineages(self, lineages:list[list[int]]):
@@ -277,23 +294,72 @@ class PocketDB:
         return intersect_all(
             *lineage_selects
         )
-    def get_items_by_tags(self, user:str, tags:list[str]) -> list[str]:
+    def _get_items_with_tag(self, tag_id:int) -> list:
+        stmt = (
+            select(Item)
+            .join(TagItem, TagItem.item_id == Item.id)
+            .where(TagItem.tag_id == tag_id)
+        )
+        results = self._exec(stmt=stmt, params=None, get_results=True)
+        print(f"tag_id:{tag_id}, results: {results}")
+        return results
+
+    def get_items_by_tags(self, user:str, tags:list[str]):
         user_id = self._get_user_id(name=user)
         if user_id == -1:
             return []
 
-        if len(tags) == 0:
+        if(len(tags)) == 0:
             return []
 
-        tag_lineages = [[]] * 8
+        tag_lineages = []
         for i in range(len(tags)):
             tag = tags[i]
             tag_id = self._get_tag_id(user_id=user_id, name=tag)
             if tag_id == -1:
                 continue
 
-            tag_lineages[i] = self._get_tag_lineage(user_id=user_id, tag_id=tag_id)
+            tag_lineages.append(self._get_tag_lineage(user_id=user_id, tag_id=tag_id))
 
+        print(tag_lineages)
+
+        lineage_item_sets = []
+
+        for lineage in tag_lineages:
+            lineage_item_set = set()
+            print(f"lineage: {lineage}")
+            for tag_id in lineage:
+                items_with_tag = self._get_items_with_tag(tag_id=tag_id)
+                print(f"items_with_tag: {items_with_tag}")
+                for item in items_with_tag:
+                    lineage_item_set.add(item)
+            print(f"lineage_item_set: {lineage_item_set}")
+            lineage_item_sets.append(lineage_item_set)
+
+        items = set.intersection(*lineage_item_sets)
+        return list(items)
+
+
+    def get_items_by_tags_deprecated(self, user:str, tags:list[str]):
+        user_id = self._get_user_id(name=user)
+        print(f"TAGS: {tags}")
+        if user_id == -1:
+            return []
+
+        if len(tags) == 0:
+            return []
+
+        tag_lineages = []
+        for i in range(len(tags)):
+            tag = tags[i]
+            tag_id = self._get_tag_id(user_id=user_id, name=tag)
+            if tag_id == -1:
+                continue
+
+            tag_lineages.append(self._get_tag_lineage(user_id=user_id, tag_id=tag_id))
+
+
+        print(tag_lineages)
         '''
         for each lineage:
             for each tag:
@@ -302,3 +368,6 @@ class PocketDB:
 
         intersect all lineages
         '''
+        stmt = self._mk_stmt_get_items_by_multiple_lineages(lineages=tag_lineages)
+        results = self._exec(stmt, get_results=True)
+        return results
