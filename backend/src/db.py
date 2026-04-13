@@ -1,4 +1,3 @@
-from re import A
 from sqlalchemy import create_engine, text, insert, select, delete, intersect, join, intersect_all, union_all, union
 import logging
 from sqlalchemy.orm import MappedAsDataclass, DeclarativeBase, mapped_column, Mapped
@@ -98,6 +97,8 @@ class PocketDB:
         results = self._exec(stmt, params=None, get_results=True)
         if len(results) == 0: return -1
         return results[0][0]
+    def user_exists(self, name):
+        return self._get_user_id(name) != -1
 
     def _add_user(self, name, password):
         stmt = insert(User)
