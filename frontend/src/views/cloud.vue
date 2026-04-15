@@ -49,7 +49,7 @@
 </template>
 
 <script>
-import { useAuthStore } from "../stores/auth.js";
+
 import { listFiles } from "../api.js";
 
 export default {
@@ -65,11 +65,6 @@ export default {
     this.fetchItems();
   },
   methods: {
-    handleLogout() {
-      const auth = useAuthStore();
-      auth.logout();
-      this.$router.push("/login");
-    },
     formatBytes(size) {
       if (typeof size !== "number" || Number.isNaN(size)) return "N/A";
       if (size < 1024) return `${size} B`;
@@ -95,8 +90,8 @@ export default {
         this.items = Array.isArray(response?.data) ? response.data : [];
       } catch (err) {
         if (err?.response?.status === 401) {
-          this.error = "Please log in to view cloud items.";
-          this.$router.push("/login");
+          this.error = "You can view this page without logging in, but file data requires an authenticated session.";
+          this.items = [];
         } else {
           this.error = err?.response?.data?.detail || err.message || "Failed to load items.";
         }

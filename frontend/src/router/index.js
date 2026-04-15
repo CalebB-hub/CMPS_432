@@ -19,10 +19,16 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/cloud',
+    name: 'cloud',
+    component: () => import('../views/cloud.vue'),
+    meta: { requiresAuth: false },
+  },
+  {
     path: '/settings',
     name: 'settings',
     component: () => import('../views/SettingsView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: false },
   },
   {
     path: '/login',
@@ -47,7 +53,7 @@ router.beforeEach(async (to) => {
     await auth.fetchMe()
   }
   if (to.meta.requiresGuest && auth.user) {
-    return { name: 'dashboard' }
+    return { name: 'cloud' }
   }
   if (to.meta.requiresAuth && !auth.user) {
     return { name: 'login' }

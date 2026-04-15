@@ -4,8 +4,9 @@
     <nav class="navbar">
       <span class="brand">⚙ Settings</span>
       <div class="nav-links">
-        <router-link to="/dashboard" class="nav-link">Cloud Storage</router-link>
-        <button class="btn-logout" @click="handleLogout">Logout</button>
+        <router-link to="/cloud" class="nav-link">Cloud Storage</router-link>
+        <button v-if="auth.user" class="btn-logout" @click="handleLogout">Logout</button>
+        <router-link v-else to="/login" class="nav-link">Login</router-link>
       </div>
     </nav>
 

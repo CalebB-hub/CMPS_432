@@ -41,7 +41,7 @@ async function handleLogin() {
   loading.value = true
   try {
     await auth.loginUser(username.value, password.value)
-    router.push('/')
+    router.push('/cloud')
   } catch (e) {
     error.value = e.response?.data?.detail || 'Login failed'
   } finally {
