@@ -23,6 +23,14 @@ async def root():
 async def addItem(item: Item):
     return item
 
+@app.put('/items/')
+async def updateItem(item: Item):
+    return item
+
+@app.put('/items/')
+async def deleteItem(item: Item):
+    return item
+
 @app.post('/users/')
 async def addUser(user: User):
     user_exists = db.user_exists(name=user.name)
