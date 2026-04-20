@@ -21,6 +21,7 @@ class Item(Base):
     id: Mapped[int] = primary_key()
     name: Mapped[str]
     path: Mapped[str]
+    s3_key: Mapped[str | None] = mapped_column(nullable=True)  # S3 object key
     user_id: Mapped[int] = mapped_column(ForeignKey("User.id"))
 
 class Share(Base):
