@@ -15,13 +15,19 @@ const routes = [
   {
     path: '/dashboard',
     name: 'dashboard',
-    component: () => import('../views/HomeView.vue'),
+    component: () => import('../views/Home.vue'),
     meta: { requiresAuth: true },
   },
   {
     path: '/cloud',
     name: 'cloud',
     component: () => import('../views/cloud.vue'),
+    meta: { requiresAuth: false },
+  },
+  {
+    path: '/cloud/add',
+    name: 'cloud-add',
+    component: () => import('../views/AddItemView.vue'),
     meta: { requiresAuth: false },
   },
   {
