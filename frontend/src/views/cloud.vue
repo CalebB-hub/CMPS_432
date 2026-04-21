@@ -16,9 +16,13 @@
     </header>
 
     <section class="controls">
-      <button @click="fetchItems" :disabled="loading">
-        {{ loading ? "Loading..." : "Refresh Items" }}
-      </button>
+      <input
+        v-model="searchQuery"
+        type="text"
+        placeholder="Search files by name..."
+        aria-label="Search files by name"
+      />
+      <button class="add-btn" @click="goToAddItem">Add Item</button>
     </section>
 
     <section v-if="error" class="error-box">
@@ -30,18 +34,24 @@
     </section>
 
     <section v-else>
-      <div v-if="items.length === 0" class="empty-box">
-        No items found in the database.
-      </div>
+      <div class="items-container">
+        <div v-if="items.length === 0" class="items-empty-state">
+          No items found in the database.
+        </div>
 
-      <div v-else class="items-grid">
-        <div v-for="item in items" :key="item.id" class="item-card">
-          <h2>{{ item.original_filename }}</h2>
-          <p><strong>ID:</strong> {{ item.id }}</p>
-          <p><strong>Stored Name:</strong> {{ item.filename }}</p>
-          <p><strong>Size:</strong> {{ formatBytes(item.size) }}</p>
-          <p><strong>Uploaded:</strong> {{ formatDate(item.uploaded_at) }}</p>
-          <p><strong>Tags:</strong> {{ formatTags(item.tags) }}</p>
+        <div v-else-if="filteredItems.length === 0" class="items-empty-state">
+          No files match "{{ searchQuery }}".
+        </div>
+
+        <div v-else class="items-grid">
+          <div v-for="item in filteredItems" :key="item.id" class="item-card">
+            <h2>{{ item.original_filename }}</h2>
+            <p><strong>ID:</strong> {{ item.id }}</p>
+            <p><strong>Stored Name:</strong> {{ item.filename }}</p>
+            <p><strong>Size:</strong> {{ formatBytes(item.size) }}</p>
+            <p><strong>Uploaded:</strong> {{ formatDate(item.uploaded_at) }}</p>
+            <p><strong>Tags:</strong> {{ formatTags(item.tags) }}</p>
+          </div>
         </div>
       </div>
     </section>
@@ -49,7 +59,6 @@
 </template>
 
 <script>
-
 import { listFiles } from "../api.js";
 
 export default {
@@ -57,14 +66,34 @@ export default {
   data() {
     return {
       items: [],
+      searchQuery: "",
       loading: false,
-      error: null
+      error: null,
     };
+  },
+  computed: {
+    filteredItems() {
+      const query = this.searchQuery.trim().toLowerCase();
+      if (!query) return this.items;
+
+      return this.items.filter((item) => {
+        const originalName = String(item.original_filename || "").toLowerCase();
+        const storedName = String(item.filename || "").toLowerCase();
+        return originalName.includes(query) || storedName.includes(query);
+      });
+    },
   },
   mounted() {
     this.fetchItems();
   },
   methods: {
+    handleLogout() {
+      localStorage.removeItem("token");
+      this.$router.push("/");
+    },
+    goToAddItem() {
+      this.$router.push("/cloud/add");
+    },
     formatBytes(size) {
       if (typeof size !== "number" || Number.isNaN(size)) return "N/A";
       if (size < 1024) return `${size} B`;
@@ -90,7 +119,8 @@ export default {
         this.items = Array.isArray(response?.data) ? response.data : [];
       } catch (err) {
         if (err?.response?.status === 401) {
-          this.error = "You can view this page without logging in, but file data requires an authenticated session.";
+          this.error =
+            "You can view this page without logging in, but file data requires an authenticated session.";
           this.items = [];
         } else {
           this.error = err?.response?.data?.detail || err.message || "Failed to load items.";
@@ -98,8 +128,8 @@ export default {
       } finally {
         this.loading = false;
       }
-    }
-  }
+    },
+  },
 };
 </script>
 
@@ -178,22 +208,58 @@ export default {
 .controls {
   display: flex;
   justify-content: center;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 10px;
   margin-bottom: 20px;
 }
 
-.controls button {
-  padding: 10px 18px;
+.controls input {
+  flex: 0 1 460px;
+  width: 460px;
+  max-width: calc(100% - 110px);
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 16px;
+  background: white;
+  color: #1f2937;
+}
+
+.controls input:focus {
+  outline: 2px solid #93c5fd;
+  border-color: #2563eb;
+}
+
+.controls input::placeholder {
+  color: #64748b;
+}
+
+.controls input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  border-radius: 8px;
+  cursor: not-allowed;
+}
+
+.add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: #2563eb;
   color: white;
   border-radius: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
-  font-size: 16px;
 }
 
-.controls button:disabled {
-  background: #93c5fd;
-  cursor: not-allowed;
+.add-btn:hover {
+  background: #1d4ed8;
 }
 
 .error-box {
@@ -204,12 +270,33 @@ export default {
   margin-bottom: 16px;
 }
 
-.status-box,
-.empty-box {
+.status-box {
   text-align: center;
   padding: 16px;
   background: white;
   border-radius: 8px;
+  color: #444;
+}
+
+.items-container {
+  min-height: 520px;
+  max-height: 520px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.items-empty-state {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   color: #444;
 }
 
