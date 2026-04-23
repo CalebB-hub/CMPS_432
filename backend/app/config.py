@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     upload_dir: str = "./uploads"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    s3_bucket_name: str = ""
+    aws_region: str = "us-east-1"
 
     @field_validator("secret_key")
     @classmethod
