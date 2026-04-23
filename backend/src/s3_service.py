@@ -2,6 +2,10 @@ import boto3
 from botocore.exceptions import ClientError
 import os
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 

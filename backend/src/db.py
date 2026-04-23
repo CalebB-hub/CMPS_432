@@ -373,3 +373,57 @@ class PocketDB:
         stmt = self._mk_stmt_get_items_by_multiple_lineages(lineages=tag_lineages)
         results = self._exec(stmt, get_results=True)
         return results
+
+    # ============ FILE OPERATIONS FOR S3 ============
+    
+    def get_item_by_id(self, item_id: int, user_id: int):
+        """Get item details by ID (ensure user owns it)"""
+        stmt = select(Item).where(Item.id == item_id).where(Item.user_id == user_id)
+        results = self._exec(stmt, params=None, get_results=True)
+        if len(results) == 0:
+            return None
+        return results[0]
+
+    def get_items_by_user(self, user_id: int):
+        """Get all items for a user"""
+        stmt = select(Item).where(Item.user_id == user_id)
+        results = self._exec(stmt, params=None, get_results=True)
+        return results
+
+    def add_item_with_s3(self, user_id: int, name: str, s3_key: str):
+        """Add item with S3 metadata"""
+        stmt = insert(Item)
+        params = [{
+            "user_id": user_id,
+            "name": name,
+            "path": s3_key,
+            "s3_key": s3_key,
+        }]
+        self._exec(stmt, params)
+        
+        # Return the newly created item ID
+        item_id = self._get_item_id(user_id=user_id, name=name)
+        return item_id
+
+    def delete_item_by_id(self, item_id: int, user_id: int):
+        """Delete item (verify user owns it)"""
+        stmt = delete(Item).where(Item.id == item_id).where(Item.user_id == user_id)
+        self._exec(stmt, params=None)
+
+    # ============ USER AUTHENTICATION ============
+
+    def verify_user_password(self, name: str, password: str):
+        """Check if user exists and password matches. Returns (is_valid, user_id)"""
+        stmt = select(User).where(User.name == name)
+        results = self._exec(stmt, params=None, get_results=True)
+        if len(results) == 0:
+            return False, -1  # User doesn't exist
+        
+        user = results[0]
+        if user.password == password:
+            return True, user.id  # Valid credentials, return user ID
+        return False, -1  # Password mismatch
+
+    def get_user_id_by_name(self, name: str):
+        """Get user ID by username"""
+        return self._get_user_id(name)
