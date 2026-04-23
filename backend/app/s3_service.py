@@ -51,8 +51,8 @@ class S3Service:
             )
             self.bucket = bucket
             
-            # Test connection by listing buckets
-            self.s3_client.list_buckets()
+            # Test connection by checking bucket access (requires only s3:ListBucket on this bucket, not ListAllMyBuckets)
+            self.s3_client.head_bucket(Bucket=bucket)
             self.enabled = True
             logger.info(f"S3 service initialized successfully with bucket: {self.bucket}")
         except Exception as e:
