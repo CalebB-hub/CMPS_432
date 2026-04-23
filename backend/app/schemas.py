@@ -38,6 +38,7 @@ class FileRead(FileBase):
     uploaded_at: datetime.datetime
     owner_id: int
     tags: List[TagRead] = []
+    download_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
