@@ -10,56 +10,129 @@
       </div>
     </nav>
 
-    <header class="header">
-      <h1>Cloud Storage Items</h1>
-      <p>Files loaded from your local API server</p>
-    </header>
+    <div
+      class="content-layout"
+      :style="{ '--sidebar-width': isTagSidebarCollapsed ? '64px' : '280px' }"
+    >
+      <button class="sidebar-toggle-btn" @click="toggleTagSidebar">
+        {{ isTagSidebarCollapsed ? '⟩' : '⟨' }}
+      </button>
 
-    <section class="controls">
-      <input
-        v-model="searchQuery"
-        type="text"
-        placeholder="Search files by name..."
-        aria-label="Search files by name"
-      />
-      <button class="add-btn" @click="goToAddItem">Add Item</button>
-    </section>
+      <aside class="tags-sidebar" :class="{ collapsed: isTagSidebarCollapsed }">
+        <h2 class="sidebar-title">{{ isTagSidebarCollapsed ? 'Tags' : 'Tags' }}</h2>
+        <p v-if="!isTagSidebarCollapsed" class="sidebar-subtitle">
+          Filter cloud items by one or more tags.
+        </p>
 
-    <section v-if="error" class="error-box">
-      <strong>Error:</strong> {{ error }}
-    </section>
+        <template v-if="!isTagSidebarCollapsed">
+          <button
+            v-if="activeTagFilters.length > 0"
+            class="clear-filters-btn"
+            @click="clearTagFilters"
+          >
+            Clear filters ({{ activeTagFilters.length }})
+          </button>
 
-    <section v-if="loading" class="status-box">
-      Loading items from server...
-    </section>
-
-    <section v-else>
-      <div class="items-container">
-        <div v-if="items.length === 0" class="items-empty-state">
-          No items found in the database.
-        </div>
-
-        <div v-else-if="filteredItems.length === 0" class="items-empty-state">
-          No files match "{{ searchQuery }}".
-        </div>
-
-        <div v-else class="items-grid">
-          <div v-for="item in filteredItems" :key="item.id" class="item-card">
-            <h2>{{ item.original_filename }}</h2>
-            <p><strong>ID:</strong> {{ item.id }}</p>
-            <p><strong>Stored Name:</strong> {{ item.filename }}</p>
-            <p><strong>Size:</strong> {{ formatBytes(item.size) }}</p>
-            <p><strong>Uploaded:</strong> {{ formatDate(item.uploaded_at) }}</p>
-            <p><strong>Tags:</strong> {{ formatTags(item.tags) }}</p>
+          <div v-if="availableTags.length === 0" class="tags-empty-state">
+            {{ tagSidebarMessage }}
           </div>
-        </div>
-      </div>
-    </section>
+
+          <div v-else class="tags-list" role="list">
+            <button
+              v-for="tag in availableTags"
+              :key="tag"
+              class="tag-chip"
+              :class="{ active: activeTagFilters.includes(tag) }"
+              @click="toggleTagFilter(tag)"
+            >
+              {{ tag }}
+            </button>
+          </div>
+        </template>
+      </aside>
+
+      <main class="main-content">
+        <header class="header">
+          <h1>Cloud Storage Items</h1>
+          <p>Files loaded from your local API server</p>
+        </header>
+
+        <section class="controls">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search files by name..."
+            aria-label="Search files by name"
+          />
+          <button class="add-btn" @click="goToAddItem">Add Item</button>
+          <button
+            class="remove-btn"
+            :disabled="!hasSelectedItem || deletingItemId !== null"
+            @click="removeSelectedItem"
+          >
+            {{ deletingItemId !== null && hasSelectedItem ? "Removing..." : "Remove Item" }}
+          </button>
+        </section>
+
+        <section v-if="error" class="error-box">
+          <strong>Error:</strong> {{ error }}
+        </section>
+
+        <section v-if="loading" class="status-box">
+          Loading items from server...
+        </section>
+
+        <section v-else>
+          <div class="items-container">
+            <div v-if="items.length === 0" class="items-empty-state">
+              No items found in the database.
+            </div>
+
+            <div v-else-if="filteredItems.length === 0" class="items-empty-state">
+              No files match the current search/filter.
+            </div>
+
+            <div v-else class="items-list" role="list">
+              <div
+                v-for="item in filteredItems"
+                :key="item.id"
+                class="item-row"
+                :class="{ selected: selectedItemId === item.id }"
+                role="button"
+                tabindex="0"
+                @click="selectItem(item.id)"
+                @keydown.enter.prevent="selectItem(item.id)"
+                @keydown.space.prevent="selectItem(item.id)"
+              >
+                <div class="item-row-content">
+                  <div class="item-row-title">{{ item.original_filename || "Unnamed file" }}</div>
+                  <div class="item-row-meta">
+                    <span><strong>ID:</strong> {{ item.id }}</span>
+                    <span><strong>Stored Name:</strong> {{ item.filename || "N/A" }}</span>
+                    <span><strong>Content Type:</strong> {{ item.content_type || "N/A" }}</span>
+                    <span><strong>Size:</strong> {{ formatBytes(item.size) }}</span>
+                    <span><strong>Uploaded:</strong> {{ formatDate(item.uploaded_at) }}</span>
+                    <span><strong>Owner ID:</strong> {{ item.owner_id ?? "N/A" }}</span>
+                  </div>
+                </div>
+                <button
+                  class="delete-btn"
+                  :disabled="deletingItemId === item.id || selectedItemId !== item.id"
+                  @click.stop="handleDelete(item.id)"
+                >
+                  {{ deletingItemId === item.id ? "Deleting..." : "Delete" }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
   </div>
 </template>
 
 <script>
-import { listFiles } from "../api.js";
+import { deleteFile, listFiles } from "../api.js";
 
 export default {
   name: "StoredItems",
@@ -67,20 +140,56 @@ export default {
     return {
       items: [],
       searchQuery: "",
+      activeTagFilters: [],
+      isTagSidebarCollapsed: false,
+      selectedItemId: null,
+      deletingItemId: null,
       loading: false,
       error: null,
     };
   },
   computed: {
+    availableTags() {
+      const tagSet = new Set();
+
+      this.items.forEach((item) => {
+        const itemTags = Array.isArray(item.tags) ? item.tags : [];
+        itemTags.forEach((tag) => {
+          const tagName = String(tag?.name || "").trim().toLowerCase();
+          if (tagName) tagSet.add(tagName);
+        });
+      });
+
+      return Array.from(tagSet).sort((tagA, tagB) => tagA.localeCompare(tagB));
+    },
+    tagSidebarMessage() {
+      if (this.items.length === 0) {
+        return "No tags and no items in the database.";
+      }
+      return "No tags were generated.";
+    },
     filteredItems() {
       const query = this.searchQuery.trim().toLowerCase();
-      if (!query) return this.items;
-
       return this.items.filter((item) => {
         const originalName = String(item.original_filename || "").toLowerCase();
         const storedName = String(item.filename || "").toLowerCase();
-        return originalName.includes(query) || storedName.includes(query);
+        const matchesName = !query || originalName.includes(query) || storedName.includes(query);
+
+        if (!matchesName) return false;
+
+        if (this.activeTagFilters.length === 0) return true;
+
+        const itemTagNames = new Set(
+          (Array.isArray(item.tags) ? item.tags : [])
+            .map((tag) => String(tag?.name || "").trim().toLowerCase())
+            .filter(Boolean)
+        );
+
+        return this.activeTagFilters.every((tagName) => itemTagNames.has(tagName));
       });
+    },
+    hasSelectedItem() {
+      return this.items.some((item) => item.id === this.selectedItemId);
     },
   },
   mounted() {
@@ -106,9 +215,43 @@ export default {
       if (Number.isNaN(parsed.getTime())) return "N/A";
       return parsed.toLocaleString();
     },
-    formatTags(tags) {
-      if (!Array.isArray(tags) || tags.length === 0) return "None";
-      return tags.map((tag) => tag.name).join(", ");
+    toggleTagFilter(tagName) {
+      if (this.activeTagFilters.includes(tagName)) {
+        this.activeTagFilters = this.activeTagFilters.filter((tag) => tag !== tagName);
+        return;
+      }
+      this.activeTagFilters = [...this.activeTagFilters, tagName];
+    },
+    clearTagFilters() {
+      this.activeTagFilters = [];
+    },
+    toggleTagSidebar() {
+      this.isTagSidebarCollapsed = !this.isTagSidebarCollapsed;
+    },
+    selectItem(itemId) {
+      this.selectedItemId = itemId;
+      this.error = null;
+    },
+    async removeSelectedItem() {
+      if (!this.hasSelectedItem || this.deletingItemId !== null) return;
+      await this.handleDelete(this.selectedItemId);
+    },
+    async handleDelete(itemId) {
+      this.selectedItemId = itemId;
+      this.error = null;
+      this.deletingItemId = itemId;
+
+      try {
+        await deleteFile(itemId);
+        this.items = this.items.filter((item) => item.id !== itemId);
+        if (this.selectedItemId === itemId) {
+          this.selectedItemId = null;
+        }
+      } catch (err) {
+        this.error = err?.response?.data?.detail || err.message || "Failed to delete item.";
+      } finally {
+        this.deletingItemId = null;
+      }
     },
     async fetchItems() {
       this.loading = true;
@@ -135,20 +278,151 @@ export default {
 
 <style scoped>
 .page {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 24px 24px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   font-family: Arial, sans-serif;
   background: #f7f9fc;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .navbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 0;
-  margin-bottom: 16px;
+  padding: 16px 24px;
+  margin-bottom: 0;
+}
+
+.content-layout {
+  position: relative;
+  display: flex;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  --sidebar-width: 280px;
+}
+
+.sidebar-toggle-btn {
+  position: absolute;
+  top: 12px;
+  left: calc(var(--sidebar-width) + 8px);
+  transform: translateX(-100%);
+  z-index: 20;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sidebar-toggle-btn:hover {
+  background: #eff6ff;
+}
+
+.tags-sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: white;
+  border-right: 1px solid #dbeafe;
+  border-left: none;
+  border-top: none;
+  border-bottom: none;
+  border-radius: 0;
+  padding: 14px;
+  min-height: calc(100vh - 74px);
+  max-height: calc(100vh - 74px);
+  overflow-y: auto;
+  transition: width 0.22s ease, min-width 0.22s ease;
+}
+
+.tags-sidebar.collapsed {
+  padding: 14px 10px;
+}
+
+.sidebar-title {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1.05rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-subtitle {
+  margin: 6px 0 12px;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.clear-filters-btn {
+  width: 100%;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.clear-filters-btn:hover {
+  background: #dbeafe;
+}
+
+.tags-empty-state {
+  color: #64748b;
+  font-size: 0.92rem;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.tags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag-chip {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-transform: lowercase;
+}
+
+.tag-chip:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.tag-chip.active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-weight: 600;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 24px 24px;
 }
 
 .navbar-brand {
@@ -262,6 +536,31 @@ export default {
   background: #1d4ed8;
 }
 
+.remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #ef4444;
+  color: white;
+  border-radius: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.remove-btn:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.remove-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .error-box {
   background: #fee2e2;
   color: #991b1b;
@@ -300,22 +599,77 @@ export default {
   color: #444;
 }
 
-.items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 16px;
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.item-card {
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+.item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
 }
 
-.item-card h2 {
-  margin-top: 0;
-  margin-bottom: 12px;
+.item-row:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.item-row:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.item-row.selected {
+  border-color: #2563eb;
+  background: #dbeafe;
+}
+
+.item-row-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-row-title {
+  font-weight: 700;
   color: #1f2937;
+  margin-bottom: 6px;
 }
+
+.item-row-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 4px 14px;
+  font-size: 0.92rem;
+  color: #334155;
+}
+
+.delete-btn {
+  flex-shrink: 0;
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.delete-btn:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.delete-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 </style>

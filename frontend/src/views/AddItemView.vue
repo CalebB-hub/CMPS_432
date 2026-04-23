@@ -43,25 +43,44 @@
         />
 
         <div class="tags-block">
-          <p class="label-like">Select Tags</p>
-          <div v-if="tagsLoading" class="tags-status">Loading tags...</div>
-          <div v-else-if="tagsError" class="tags-status error">{{ tagsError }}</div>
-          <div v-else-if="availableTags.length === 0" class="tags-status">
-            No tags available.
+          <p class="label-like">Tags</p>
+          <div class="tag-entry-row">
+            <input
+              v-model.trim="pendingTag"
+              type="text"
+              class="tag-input"
+              placeholder="Type a tag and store it"
+              list="existing-tags"
+              @keydown.enter.prevent="storePendingTag"
+            />
+            <button type="button" class="store-tag-btn" @click="storePendingTag">
+              Store
+            </button>
           </div>
-          <div v-else class="tags-list">
-            <label
-              v-for="tag in availableTags"
-              :key="tag.id"
-              class="tag-item"
-            >
-              <input
-                type="checkbox"
-                :value="tag.name"
-                v-model="selectedTags"
-              />
-              <span>{{ tag.name }}</span>
-            </label>
+
+          <datalist id="existing-tags">
+            <option v-for="tag in availableTags" :key="tag.id" :value="tag.name" />
+          </datalist>
+
+          <div v-if="tagsLoading" class="tags-status">Loading tag suggestions...</div>
+          <div v-else-if="tagsError" class="tags-status error">{{ tagsError }}</div>
+
+          <div v-if="stagedTags.length === 0" class="tags-status">
+            No tags stored yet.
+          </div>
+
+          <div v-else class="staged-tags-list">
+            <div v-for="tag in stagedTags" :key="tag" class="staged-tag-item">
+              <span>{{ tag }}</span>
+              <button
+                type="button"
+                class="remove-tag-btn"
+                aria-label="Remove tag"
+                @click="removeTag(tag)"
+              >
+                ×
+              </button>
+            </div>
           </div>
         </div>
 
@@ -91,7 +110,8 @@ const router = useRouter()
 const description = ref('')
 const fileName = ref('')
 const selectedFile = ref(null)
-const selectedTags = ref([])
+const pendingTag = ref('')
+const stagedTags = ref([])
 const availableTags = ref([])
 const tagsLoading = ref(false)
 const tagsError = ref('')
@@ -145,6 +165,19 @@ function saveDescriptionLocally() {
   localStorage.setItem(key, JSON.stringify(descriptions))
 }
 
+function storePendingTag() {
+  const normalized = pendingTag.value.trim().toLowerCase()
+  if (!normalized) return
+  if (!stagedTags.value.includes(normalized)) {
+    stagedTags.value = [...stagedTags.value, normalized]
+  }
+  pendingTag.value = ''
+}
+
+function removeTag(tagName) {
+  stagedTags.value = stagedTags.value.filter((tag) => tag !== tagName)
+}
+
 async function handleSave() {
   error.value = ''
   success.value = ''
@@ -165,9 +198,11 @@ async function handleSave() {
   saving.value = true
   try {
     const fileToUpload = buildFileToUpload()
-    const tagsCsv = selectedTags.value.join(',')
+    const tagsCsv = stagedTags.value.join(',')
     await uploadFile(fileToUpload, tagsCsv)
     saveDescriptionLocally()
+    stagedTags.value = []
+    pendingTag.value = ''
     success.value = 'Item saved successfully. Redirecting to cloud page...'
     setTimeout(() => {
       router.push('/cloud')
@@ -284,6 +319,33 @@ input[type='file']:focus {
   margin-top: 4px;
 }
 
+.tag-entry-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tag-input {
+  flex: 1;
+}
+
+.store-tag-btn {
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.store-tag-btn:hover {
+  background: #1d4ed8;
+}
+
 .tags-list {
   display: flex;
   flex-wrap: wrap;
@@ -291,7 +353,14 @@ input[type='file']:focus {
   margin-top: 8px;
 }
 
-.tag-item {
+.staged-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.staged-tag-item {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -301,6 +370,17 @@ input[type='file']:focus {
   color: #1e3a8a;
   padding: 6px 10px;
   font-size: 13px;
+}
+
+.remove-tag-btn {
+  border: none;
+  background: transparent;
+  color: #1e3a8a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
 }
 
 .tags-status {
