@@ -18,7 +18,6 @@ class Item(BaseModel):
     user_key: str
     tags: list[str]
     id: int | None
-
 class User(BaseModel):
     name: str
     password: str
@@ -45,6 +44,14 @@ async def root():
 
 @app.post('/items/')
 async def addItem(item: Item):
+    return item
+
+@app.put('/items/')
+async def updateItem(item: Item):
+    return item
+
+@app.put('/items/')
+async def deleteItem(item: Item):
     return item
 
 @app.post('/users/')
