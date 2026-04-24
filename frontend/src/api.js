@@ -46,6 +46,9 @@ export const deleteFile = (id) => api.delete(`/files/${id}`)
 
 export const getFile = (id) => api.get(`/files/${id}`)
 
+export const downloadFile = (id) =>
+  api.get(`/files/${id}/download`, { responseType: 'blob' })
+
 export const updateFileTags = (id, tagNames) =>
   api.patch(`/files/${id}/tags`, tagNames)
 

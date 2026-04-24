@@ -125,6 +125,13 @@
                     Edit
                   </button>
                   <button
+                    class="download-btn"
+                    :disabled="downloadingItemId === item.id || selectedItemId !== item.id"
+                    @click.stop="handleDownload(item)"
+                  >
+                    {{ downloadingItemId === item.id ? "Downloading..." : "Download" }}
+                  </button>
+                  <button
                     class="delete-btn"
                     :disabled="deletingItemId === item.id || selectedItemId !== item.id"
                     @click.stop="handleDelete(item.id)"
@@ -142,7 +149,7 @@
 </template>
 
 <script>
-import { deleteFile, listFiles } from "../api.js";
+import { deleteFile, downloadFile, listFiles } from "../api.js";
 import { readFileMetadataMap } from "../utils/fileMetadata.js";
 
 export default {
@@ -155,6 +162,7 @@ export default {
       isTagSidebarCollapsed: false,
       selectedItemId: null,
       deletingItemId: null,
+      downloadingItemId: null,
       fileMetadataMap: {},
       loading: false,
       error: null,
@@ -272,6 +280,42 @@ export default {
     async removeSelectedItem() {
       if (!this.hasSelectedItem || this.deletingItemId !== null) return;
       await this.handleDelete(this.selectedItemId);
+    },
+    async handleDownload(item) {
+      const itemId = item?.id;
+      if (!itemId) return;
+
+      this.selectedItemId = itemId;
+      this.error = null;
+      this.downloadingItemId = itemId;
+
+      try {
+        const response = await downloadFile(itemId);
+        const blob = new Blob([response.data], {
+          type: response.headers?.["content-type"] || "application/octet-stream",
+        });
+
+        const disposition = response.headers?.["content-disposition"] || "";
+        const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+        const responseFilename = decodeURIComponent(
+          filenameMatch?.[1] || filenameMatch?.[2] || ""
+        ).trim();
+        const fallbackFilename = this.getDisplayName(item) || item.filename || `file-${itemId}`;
+        const targetFilename = responseFilename || fallbackFilename;
+
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = targetFilename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(downloadUrl);
+      } catch (err) {
+        this.error = err?.response?.data?.detail || err.message || "Failed to download item.";
+      } finally {
+        this.downloadingItemId = null;
+      }
     },
     async handleDelete(itemId) {
       this.selectedItemId = itemId;
@@ -712,6 +756,27 @@ export default {
 }
 
 .edit-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.download-btn {
+  flex-shrink: 0;
+  border: none;
+  background: #0f766e;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.download-btn:hover:not(:disabled) {
+  background: #0d9488;
+}
+
+.download-btn:disabled {
   cursor: not-allowed;
   opacity: 0.7;
 }
