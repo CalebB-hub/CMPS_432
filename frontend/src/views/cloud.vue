@@ -108,7 +108,6 @@
                   <div class="item-row-title">{{ getDisplayName(item) }}</div>
                   <div class="item-row-meta">
                     <span><strong>ID:</strong> {{ item.id }}</span>
-                    <span><strong>Stored Name:</strong> {{ item.filename || "N/A" }}</span>
                     <span><strong>Description:</strong> {{ getDescription(item) }}</span>
                     <span><strong>Content Type:</strong> {{ item.content_type || "N/A" }}</span>
                     <span><strong>Size:</strong> {{ formatBytes(item.size) }}</span>
