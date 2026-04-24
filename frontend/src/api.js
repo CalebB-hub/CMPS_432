@@ -44,6 +44,8 @@ export const uploadFile = (file, tags = '') => {
 
 export const deleteFile = (id) => api.delete(`/files/${id}`)
 
+export const getFile = (id) => api.get(`/files/${id}`)
+
 export const updateFileTags = (id, tagNames) =>
   api.patch(`/files/${id}/tags`, tagNames)
 

@@ -10,8 +10,8 @@
     </nav>
 
     <header class="header">
-      <h1>Add Cloud Item</h1>
-      <p>Enter item details, choose tags, and upload your file.</p>
+      <h1>Edit Cloud Item</h1>
+      <p>Update the file name, description, and attached tags.</p>
     </header>
 
     <section class="form-card">
@@ -25,20 +25,12 @@
           required
         ></textarea>
 
-        <label for="fileInput">Choose File</label>
-        <input
-          id="fileInput"
-          type="file"
-          @change="onFileChange"
-          required
-        />
-
         <label for="fileName">File Name</label>
         <input
           id="fileName"
           v-model.trim="fileName"
           type="text"
-          placeholder="Enter file name to store"
+          placeholder="Enter display file name"
           required
         />
 
@@ -85,11 +77,11 @@
         </div>
 
         <div class="actions">
-          <button type="button" class="btn-secondary" @click="goBack" :disabled="saving">
+          <button type="button" class="btn-secondary" @click="goBack" :disabled="saving || loading">
             Cancel
           </button>
-          <button type="submit" class="btn-primary" :disabled="saving || !selectedFile">
-            {{ saving ? "Saving..." : "Save Item" }}
+          <button type="submit" class="btn-primary" :disabled="saving || loading">
+            {{ saving ? 'Saving...' : 'Save Changes' }}
           </button>
         </div>
 
@@ -101,67 +93,66 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { listTags, uploadFile } from '../api.js'
-import { writeFileMetadata } from '../utils/fileMetadata.js'
+import { onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { getFile, listTags, updateFileTags } from '../api.js'
+import { readFileMetadata, writeFileMetadata } from '../utils/fileMetadata.js'
 
+const route = useRoute()
 const router = useRouter()
 
-const description = ref('')
-const fileName = ref('')
-const selectedFile = ref(null)
-const pendingTag = ref('')
-const stagedTags = ref([])
-const availableTags = ref([])
-const tagsLoading = ref(false)
-const tagsError = ref('')
+const fileId = Number(route.params.id)
+
+const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
 const success = ref('')
 
+const description = ref('')
+const fileName = ref('')
+const pendingTag = ref('')
+const stagedTags = ref([])
+
+const availableTags = ref([])
+const tagsLoading = ref(false)
+const tagsError = ref('')
+
 onMounted(async () => {
+  if (!Number.isFinite(fileId) || fileId <= 0) {
+    error.value = 'Invalid file id.'
+    return
+  }
+
+  loading.value = true
   tagsLoading.value = true
+  error.value = ''
   tagsError.value = ''
+
   try {
-    const response = await listTags()
-    availableTags.value = Array.isArray(response?.data) ? response.data : []
+    const [fileResponse, tagsResponse] = await Promise.all([getFile(fileId), listTags()])
+    const file = fileResponse?.data || {}
+    const metadata = readFileMetadata(fileId)
+
+    fileName.value = String(metadata.displayName || file.original_filename || '').trim()
+    description.value = String(metadata.description || '').trim()
+
+    stagedTags.value = (Array.isArray(file.tags) ? file.tags : [])
+      .map((tag) => String(tag?.name || '').trim().toLowerCase())
+      .filter(Boolean)
+
+    availableTags.value = Array.isArray(tagsResponse?.data) ? tagsResponse.data : []
   } catch (e) {
-    tagsError.value = e?.response?.data?.detail || 'Unable to load tags.'
+    const detail = e?.response?.data?.detail
+    if (typeof detail === 'string') {
+      error.value = detail
+    } else {
+      error.value = 'Failed to load item details.'
+    }
   } finally {
+    loading.value = false
     tagsLoading.value = false
   }
 })
-
-function onFileChange(event) {
-  const file = event.target.files?.[0] || null
-  selectedFile.value = file
-  if (file && !fileName.value) {
-    fileName.value = file.name
-  }
-}
-
-function buildFileToUpload() {
-  if (!selectedFile.value) return null
-
-  const targetName = fileName.value.trim()
-  if (!targetName || targetName === selectedFile.value.name) {
-    return selectedFile.value
-  }
-
-  return new File([selectedFile.value], targetName, {
-    type: selectedFile.value.type,
-    lastModified: selectedFile.value.lastModified,
-  })
-}
-
-function saveDescriptionLocally(fileId) {
-  if (!fileId) return
-  writeFileMetadata(fileId, {
-    displayName: fileName.value,
-    description: description.value,
-  })
-}
 
 function storePendingTag() {
   const normalized = pendingTag.value.trim().toLowerCase()
@@ -180,33 +171,30 @@ async function handleSave() {
   error.value = ''
   success.value = ''
 
-  if (!description.value.trim()) {
-    error.value = 'Item description is required.'
-    return
-  }
-  if (!selectedFile.value) {
-    error.value = 'Please choose a file.'
-    return
-  }
   if (!fileName.value.trim()) {
     error.value = 'File name is required.'
     return
   }
 
+  if (!description.value.trim()) {
+    error.value = 'Item description is required.'
+    return
+  }
+
   saving.value = true
   try {
-    const fileToUpload = buildFileToUpload()
-    const tagsCsv = stagedTags.value.join(',')
-    const response = await uploadFile(fileToUpload, tagsCsv)
-    saveDescriptionLocally(response?.data?.id)
-    stagedTags.value = []
-    pendingTag.value = ''
-    success.value = 'Item saved successfully. Redirecting to cloud page...'
+    await updateFileTags(fileId, stagedTags.value)
+    writeFileMetadata(fileId, {
+      displayName: fileName.value,
+      description: description.value,
+    })
+
+    success.value = 'Item updated successfully. Redirecting to cloud page...'
     setTimeout(() => {
       router.push('/cloud')
     }, 700)
   } catch (e) {
-    error.value = e?.response?.data?.detail || 'Failed to save item.'
+    error.value = e?.response?.data?.detail || 'Failed to save item changes.'
   } finally {
     saving.value = false
   }
@@ -295,8 +283,7 @@ label,
 }
 
 textarea,
-input[type='text'],
-input[type='file'] {
+input[type='text'] {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid #cbd5e1;
@@ -307,8 +294,7 @@ input[type='file'] {
 }
 
 textarea:focus,
-input[type='text']:focus,
-input[type='file']:focus {
+input[type='text']:focus {
   outline: 2px solid #93c5fd;
   border-color: #2563eb;
 }
@@ -318,73 +304,62 @@ input[type='file']:focus {
 }
 
 .tag-entry-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: 8px;
-  margin-top: 8px;
-}
-
-.tag-input {
-  flex: 1;
+  margin-top: 6px;
 }
 
 .store-tag-btn {
   border: none;
-  border-radius: 8px;
   background: #2563eb;
-  color: #fff;
-  padding: 10px 12px;
-  font-size: 13px;
+  color: white;
+  border-radius: 8px;
+  padding: 0 14px;
   font-weight: 600;
   cursor: pointer;
-  white-space: nowrap;
 }
 
 .store-tag-btn:hover {
   background: #1d4ed8;
 }
 
-.tags-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.tags-status {
   margin-top: 8px;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.tags-status.error {
+  color: #b91c1c;
 }
 
 .staged-tags-list {
+  margin-top: 10px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
 }
 
 .staged-tag-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid #dbeafe;
-  border-radius: 999px;
+  border: 1px solid #bfdbfe;
   background: #eff6ff;
-  color: #1e3a8a;
-  padding: 6px 10px;
-  font-size: 13px;
+  color: #1e40af;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.86rem;
 }
 
 .remove-tag-btn {
   border: none;
   background: transparent;
-  color: #1e3a8a;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 0;
+  color: inherit;
   cursor: pointer;
-}
-
-.tags-status {
-  color: #475569;
   font-size: 14px;
-  margin-top: 6px;
+  line-height: 1;
 }
 
 .actions {
@@ -399,14 +374,13 @@ input[type='file']:focus {
   border: none;
   border-radius: 8px;
   padding: 10px 14px;
-  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .btn-primary {
   background: #2563eb;
-  color: white;
+  color: #fff;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -415,7 +389,7 @@ input[type='file']:focus {
 
 .btn-secondary {
   background: #e2e8f0;
-  color: #1e293b;
+  color: #1f2937;
 }
 
 .btn-secondary:hover:not(:disabled) {
@@ -424,20 +398,20 @@ input[type='file']:focus {
 
 .btn-primary:disabled,
 .btn-secondary:disabled {
-  opacity: 0.6;
+  opacity: 0.65;
   cursor: not-allowed;
 }
 
 .message {
-  margin: 0;
-  font-size: 14px;
+  margin-top: 8px;
+  font-size: 0.92rem;
 }
 
-.error {
+.message.error {
   color: #b91c1c;
 }
 
-.success {
+.message.success {
   color: #166534;
 }
 </style>
