@@ -37,9 +37,8 @@ class Tag(Base):
     parent = relationship(
         "Tag",
         remote_side=[id],
-        backref="children",
-        lazy="selectin",
-        foreign_keys=[parent_id]
+        foreign_keys=[parent_id],
+        lazy="select"
     )
     files = relationship("File", secondary=file_tag, back_populates="tags")
 

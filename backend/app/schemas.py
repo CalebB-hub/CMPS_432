@@ -18,15 +18,19 @@ class TagCreateWithParent(TagBase):
     parent_id: Optional[int] = None
 
 
-class TagRead(TagBase):
+class TagRead(BaseModel):
     id: int
+    name: str
     parent_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class TagHierarchy(TagRead):
+class TagHierarchy(BaseModel):
     """Tag schema with nested children for hierarchical responses."""
+    id: int
+    name: str
+    parent_id: Optional[int] = None
     children: List["TagHierarchy"] = []
 
     model_config = ConfigDict(from_attributes=True)
