@@ -105,23 +105,39 @@
                 @keydown.space.prevent="selectItem(item.id)"
               >
                 <div class="item-row-content">
-                  <div class="item-row-title">{{ item.original_filename || "Unnamed file" }}</div>
+                  <div class="item-row-title">{{ getDisplayName(item) }}</div>
                   <div class="item-row-meta">
                     <span><strong>ID:</strong> {{ item.id }}</span>
-                    <span><strong>Stored Name:</strong> {{ item.filename || "N/A" }}</span>
+                    <span><strong>Description:</strong> {{ getDescription(item) }}</span>
                     <span><strong>Content Type:</strong> {{ item.content_type || "N/A" }}</span>
                     <span><strong>Size:</strong> {{ formatBytes(item.size) }}</span>
                     <span><strong>Uploaded:</strong> {{ formatDate(item.uploaded_at) }}</span>
                     <span><strong>Owner ID:</strong> {{ item.owner_id ?? "N/A" }}</span>
                   </div>
                 </div>
-                <button
-                  class="delete-btn"
-                  :disabled="deletingItemId === item.id || selectedItemId !== item.id"
-                  @click.stop="handleDelete(item.id)"
-                >
-                  {{ deletingItemId === item.id ? "Deleting..." : "Delete" }}
-                </button>
+                <div class="item-actions">
+                  <button
+                    class="edit-btn"
+                    :disabled="selectedItemId !== item.id"
+                    @click.stop="goToEditItem(item.id)"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    class="download-btn"
+                    :disabled="downloadingItemId === item.id || selectedItemId !== item.id"
+                    @click.stop="handleDownload(item)"
+                  >
+                    {{ downloadingItemId === item.id ? "Downloading..." : "Download" }}
+                  </button>
+                  <button
+                    class="delete-btn"
+                    :disabled="deletingItemId === item.id || selectedItemId !== item.id"
+                    @click.stop="handleDelete(item.id)"
+                  >
+                    {{ deletingItemId === item.id ? "Deleting..." : "Delete" }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -132,7 +148,8 @@
 </template>
 
 <script>
-import { deleteFile, listFiles } from "../api.js";
+import { deleteFile, downloadFile, listFiles } from "../api.js";
+import { readFileMetadataMap } from "../utils/fileMetadata.js";
 
 export default {
   name: "StoredItems",
@@ -144,6 +161,8 @@ export default {
       isTagSidebarCollapsed: false,
       selectedItemId: null,
       deletingItemId: null,
+      downloadingItemId: null,
+      fileMetadataMap: {},
       loading: false,
       error: null,
     };
@@ -171,9 +190,14 @@ export default {
     filteredItems() {
       const query = this.searchQuery.trim().toLowerCase();
       return this.items.filter((item) => {
-        const originalName = String(item.original_filename || "").toLowerCase();
+        const originalName = String(this.getDisplayName(item) || "").toLowerCase();
         const storedName = String(item.filename || "").toLowerCase();
-        const matchesName = !query || originalName.includes(query) || storedName.includes(query);
+        const description = String(this.getDescription(item) || "").toLowerCase();
+        const matchesName =
+          !query ||
+          originalName.includes(query) ||
+          storedName.includes(query) ||
+          description.includes(query);
 
         if (!matchesName) return false;
 
@@ -196,9 +220,29 @@ export default {
     this.fetchItems();
   },
   methods: {
+    loadMetadataMap() {
+      this.fileMetadataMap = readFileMetadataMap();
+    },
+    getDisplayName(item) {
+      const overrideName = this.fileMetadataMap?.[String(item.id)]?.displayName;
+      if (overrideName && String(overrideName).trim()) {
+        return String(overrideName).trim();
+      }
+      return item.original_filename || "Unnamed file";
+    },
+    getDescription(item) {
+      const description = this.fileMetadataMap?.[String(item.id)]?.description;
+      if (description && String(description).trim()) {
+        return String(description).trim();
+      }
+      return "N/A";
+    },
     handleLogout() {
       localStorage.removeItem("token");
       this.$router.push("/");
+    },
+    goToEditItem(itemId) {
+      this.$router.push(`/cloud/edit/${itemId}`);
     },
     goToAddItem() {
       this.$router.push("/cloud/add");
@@ -236,6 +280,42 @@ export default {
       if (!this.hasSelectedItem || this.deletingItemId !== null) return;
       await this.handleDelete(this.selectedItemId);
     },
+    async handleDownload(item) {
+      const itemId = item?.id;
+      if (!itemId) return;
+
+      this.selectedItemId = itemId;
+      this.error = null;
+      this.downloadingItemId = itemId;
+
+      try {
+        const response = await downloadFile(itemId);
+        const blob = new Blob([response.data], {
+          type: response.headers?.["content-type"] || "application/octet-stream",
+        });
+
+        const disposition = response.headers?.["content-disposition"] || "";
+        const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+        const responseFilename = decodeURIComponent(
+          filenameMatch?.[1] || filenameMatch?.[2] || ""
+        ).trim();
+        const fallbackFilename = this.getDisplayName(item) || item.filename || `file-${itemId}`;
+        const targetFilename = responseFilename || fallbackFilename;
+
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = targetFilename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(downloadUrl);
+      } catch (err) {
+        this.error = err?.response?.data?.detail || err.message || "Failed to download item.";
+      } finally {
+        this.downloadingItemId = null;
+      }
+    },
     async handleDelete(itemId) {
       this.selectedItemId = itemId;
       this.error = null;
@@ -256,6 +336,7 @@ export default {
     async fetchItems() {
       this.loading = true;
       this.error = null;
+      this.loadMetadataMap();
 
       try {
         const response = await listFiles();
@@ -649,6 +730,54 @@ export default {
   gap: 4px 14px;
   font-size: 0.92rem;
   color: #334155;
+}
+
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-btn {
+  flex-shrink: 0;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edit-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.edit-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.download-btn {
+  flex-shrink: 0;
+  border: none;
+  background: #0f766e;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.download-btn:hover:not(:disabled) {
+  background: #0d9488;
+}
+
+.download-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .delete-btn {
