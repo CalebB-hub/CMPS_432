@@ -71,6 +71,19 @@ export const updateFileTags = (id, tagNames) =>
 
 export const listTags = () => api.get('/tags/')
 
-export const createTag = (name) => api.post('/tags/', { name })
+export const getTagsHierarchy = () => api.get('/tags/hierarchy')
+
+export const createTag = (name, parentId = null) => {
+  if (parentId) {
+    return api.post(`/tags/${parentId}/children`, { name })
+  }
+  return api.post('/tags/', { name, parent_id: parentId })
+}
+
+export const createChildTag = (parentId, name) =>
+  api.post(`/tags/${parentId}/children`, { name })
+
+export const updateTagParent = (tagId, parentId) =>
+  api.patch(`/tags/${tagId}/parent`, { parent_id: parentId })
 
 export const deleteTag = (id) => api.delete(`/tags/${id}`)

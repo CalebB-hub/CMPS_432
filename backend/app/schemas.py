@@ -1,7 +1,7 @@
 import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 # ── Tag schemas ──────────────────────────────────────────────────────────────
@@ -14,10 +14,26 @@ class TagCreate(TagBase):
     pass
 
 
+class TagCreateWithParent(TagBase):
+    parent_id: Optional[int] = None
+
+
 class TagRead(TagBase):
     id: int
+    parent_id: Optional[int] = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TagHierarchy(TagRead):
+    """Tag schema with nested children for hierarchical responses."""
+    children: List["TagHierarchy"] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Update forward references for recursive model
+TagHierarchy.model_rebuild()
 
 
 # ── File schemas ─────────────────────────────────────────────────────────────
@@ -40,7 +56,7 @@ class FileRead(FileBase):
     tags: List[TagRead] = []
     download_url: Optional[str] = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ── User schemas ─────────────────────────────────────────────────────────────
@@ -59,7 +75,7 @@ class UserRead(UserBase):
     created_at: datetime.datetime
     files: List[FileRead] = []
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ── Auth schemas ─────────────────────────────────────────────────────────────
@@ -84,4 +100,4 @@ class FeedbackRead(FeedbackCreate):
     user_id: Optional[int] = None
     created_at: datetime.datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)

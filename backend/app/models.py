@@ -30,8 +30,17 @@ class Tag(Base):
     __tablename__ = "tags"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    parent_id = Column(Integer, ForeignKey("tags.id"), nullable=True, index=True)
 
+    # Self-referential relationships for parent-child hierarchy
+    parent = relationship(
+        "Tag",
+        remote_side=[id],
+        backref="children",
+        lazy="selectin",
+        foreign_keys=[parent_id]
+    )
     files = relationship("File", secondary=file_tag, back_populates="tags")
 
 

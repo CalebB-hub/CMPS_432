@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useTagsStore } from './tags.js'
 import { listFiles, uploadFile, deleteFile, updateFileTags } from '../api.js'
 
 export const useFilesStore = defineStore('files', () => {
   const files = ref([])
   const loading = ref(false)
   const activeTagFilter = ref('')
+  const tagsStore = useTagsStore()
 
   async function fetchFiles() {
     loading.value = true
@@ -37,5 +39,13 @@ export const useFilesStore = defineStore('files', () => {
     fetchFiles()
   }
 
-  return { files, loading, activeTagFilter, fetchFiles, upload, remove, setTags, setTagFilter }
+  async function initializeTags() {
+    try {
+      await tagsStore.fetchAllTags()
+    } catch (err) {
+      console.error('Failed to load tags:', err)
+    }
+  }
+
+  return { files, loading, activeTagFilter, fetchFiles, upload, remove, setTags, setTagFilter, initializeTags, tagsStore }
 })
