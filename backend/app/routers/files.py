@@ -2,9 +2,11 @@ import logging
 import os
 import uuid
 from typing import List, Optional
+import io
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -115,6 +117,47 @@ async def upload_file(
     db.commit()
     db.refresh(db_file)
     return _file_to_response(db_file)
+
+
+@router.get("/{file_id}/download")
+async def download_file(
+    file_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Download a file."""
+    db_file = db.query(models.File).filter(
+        models.File.id == file_id, models.File.owner_id == current_user.id
+    ).first()
+    if not db_file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        if s3_service.enabled:
+            # For S3, download the file content and return as blob
+            file_content = s3_service.download_file(db_file.storage_path)
+            return StreamingResponse(
+                io.BytesIO(file_content),
+                media_type=db_file.content_type,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{db_file.original_filename}"'
+                },
+            )
+        else:
+            # For local storage, return the file directly
+            if not os.path.exists(db_file.storage_path):
+                raise HTTPException(status_code=404, detail="File not found on disk")
+            
+            return FileResponse(
+                path=db_file.storage_path,
+                media_type=db_file.content_type,
+                filename=db_file.original_filename,
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Download failed for file {file_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 
 @router.get("/{file_id}", response_model=schemas.FileRead)

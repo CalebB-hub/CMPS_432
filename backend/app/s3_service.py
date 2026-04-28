@@ -126,6 +126,31 @@ class S3Service:
             logger.error(f"Failed to generate presigned URL for {file_key}: {e}")
             raise
 
+    def download_file(self, file_key: str) -> bytes:
+        """
+        Download a file from S3.
+
+        Args:
+            file_key: Unique identifier/path in S3
+
+        Returns:
+            File content as bytes
+
+        Raises:
+            Exception if download operation fails
+        """
+        if not self.enabled:
+            raise RuntimeError("S3 service is not enabled")
+
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket, Key=file_key)
+            file_content = response["Body"].read()
+            logger.info(f"File downloaded from S3: {file_key}")
+            return file_content
+        except ClientError as e:
+            logger.error(f"Failed to download file from S3 ({file_key}): {e}")
+            raise
+
     def delete_file(self, file_key: str) -> bool:
         """
         Delete a file from S3.
