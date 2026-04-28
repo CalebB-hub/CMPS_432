@@ -65,13 +65,38 @@
             aria-label="Search files by name"
           />
           <button class="add-btn" @click="goToAddItem">Add Item</button>
-          <button
-            class="remove-btn"
-            :disabled="!hasSelectedItem || deletingItemId !== null"
-            @click="removeSelectedItem"
-          >
-            {{ deletingItemId !== null && hasSelectedItem ? "Removing..." : "Remove Item" }}
-          </button>
+          <template v-if="hasSelectedItem">
+            <button
+              class="remove-btn"
+              :disabled="deletingMultiple"
+              @click="removeSelectedItems"
+            >
+              {{ deletingMultiple ? "Removing..." : `Remove Selected (${selectedCount})` }}
+            </button>
+            <button
+              class="download-btn top-download"
+              :disabled="downloadingMultiple"
+              @click="downloadSelectedItems"
+            >
+              {{ downloadingMultiple ? "Downloading..." : `Download Selected (${selectedCount})` }}
+            </button>
+          </template>
+          <template v-else>
+            <button
+              class="remove-btn"
+              :disabled="!focusedItemId || deletingItemId !== null"
+              @click="removeFocusedItem"
+            >
+              {{ deletingItemId !== null ? "Removing..." : "Remove" }}
+            </button>
+            <button
+              class="download-btn top-download"
+              :disabled="!focusedItemId || downloadingMultiple"
+              @click="downloadFocusedItem"
+            >
+              {{ downloadingMultiple ? "Downloading..." : "Download" }}
+            </button>
+          </template>
         </section>
 
         <section v-if="error" class="error-box">
@@ -97,12 +122,12 @@
                 v-for="item in filteredItems"
                 :key="item.id"
                 class="item-row"
-                :class="{ selected: selectedItemId === item.id }"
+                :class="{ selected: selectedIds.includes(item.id) || focusedItemId === item.id }"
                 role="button"
                 tabindex="0"
-                @click="selectItem(item.id)"
-                @keydown.enter.prevent="selectItem(item.id)"
-                @keydown.space.prevent="selectItem(item.id)"
+                @click="focusedItemId = item.id; error = null"
+                @keydown.enter.prevent="focusedItemId = item.id"
+                @keydown.space.prevent="focusedItemId = item.id"
               >
                 <div class="item-row-content">
                   <div class="item-row-title">{{ getDisplayName(item) }}</div>
@@ -116,27 +141,15 @@
                   </div>
                 </div>
                 <div class="item-actions">
-                  <button
-                    class="edit-btn"
-                    :disabled="selectedItemId !== item.id"
-                    @click.stop="goToEditItem(item.id)"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    class="download-btn"
-                    :disabled="downloadingItemId === item.id || selectedItemId !== item.id"
-                    @click.stop="handleDownload(item)"
-                  >
-                    {{ downloadingItemId === item.id ? "Downloading..." : "Download" }}
-                  </button>
-                  <button
-                    class="delete-btn"
-                    :disabled="deletingItemId === item.id || selectedItemId !== item.id"
-                    @click.stop="handleDelete(item.id)"
-                  >
-                    {{ deletingItemId === item.id ? "Deleting..." : "Delete" }}
-                  </button>
+                  <button class="edit-btn" @click.stop="goToEditItem(item.id)">Edit</button>
+                  <label class="select-checkbox" @click.stop>
+                    <input
+                      type="checkbox"
+                      :checked="selectedIds.includes(item.id)"
+                      @change="toggleSelect(item.id)"
+                      aria-label="Select item"
+                    />
+                  </label>
                 </div>
               </div>
             </div>
@@ -159,9 +172,11 @@ export default {
       searchQuery: "",
       activeTagFilters: [],
       isTagSidebarCollapsed: false,
-      selectedItemId: null,
+      selectedIds: [],
+      focusedItemId: null,
       deletingItemId: null,
-      downloadingItemId: null,
+      deletingMultiple: false,
+      downloadingMultiple: false,
       fileMetadataMap: {},
       loading: false,
       error: null,
@@ -212,8 +227,11 @@ export default {
         return this.activeTagFilters.every((tagName) => itemTagNames.has(tagName));
       });
     },
+    selectedCount() {
+      return this.selectedIds.length;
+    },
     hasSelectedItem() {
-      return this.items.some((item) => item.id === this.selectedItemId);
+      return this.selectedCount > 0;
     },
   },
   mounted() {
@@ -272,24 +290,84 @@ export default {
     toggleTagSidebar() {
       this.isTagSidebarCollapsed = !this.isTagSidebarCollapsed;
     },
-    selectItem(itemId) {
-      this.selectedItemId = itemId;
+    toggleSelect(itemId) {
       this.error = null;
+      const idx = this.selectedIds.indexOf(itemId);
+      if (idx === -1) this.selectedIds = [...this.selectedIds, itemId];
+      else this.selectedIds = this.selectedIds.filter((id) => id !== itemId);
     },
-    async removeSelectedItem() {
-      if (!this.hasSelectedItem || this.deletingItemId !== null) return;
-      await this.handleDelete(this.selectedItemId);
-    },
-    async handleDownload(item) {
-      const itemId = item?.id;
-      if (!itemId) return;
 
-      this.selectedItemId = itemId;
+    async removeSelectedItems() {
+      if (!this.hasSelectedItem || this.deletingMultiple) return;
       this.error = null;
-      this.downloadingItemId = itemId;
+      this.deletingMultiple = true;
+
+      const idsToDelete = [...this.selectedIds];
+      try {
+        // Perform parallel deletes; if one fails, capture and continue
+        await Promise.all(idsToDelete.map((id) => deleteFile(id)));
+        this.items = this.items.filter((item) => !idsToDelete.includes(item.id));
+        this.selectedIds = [];
+      } catch (err) {
+        this.error = err?.response?.data?.detail || err?.message ||
+          "Failed to delete one or more items.";
+      } finally {
+        this.deletingMultiple = false;
+      }
+    },
+    async downloadSelectedItems() {
+      if (!this.hasSelectedItem || this.downloadingMultiple) return;
+      this.error = null;
+      this.downloadingMultiple = true;
+
+      const idsToDownload = [...this.selectedIds];
+      const errors = [];
+
+      for (const id of idsToDownload) {
+        try {
+          const response = await downloadFile(id);
+          const blob = new Blob([response.data], {
+            type: response.headers?.["content-type"] || "application/octet-stream",
+          });
+
+          const disposition = response.headers?.["content-disposition"] || "";
+          const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+          const responseFilename = decodeURIComponent(
+            filenameMatch?.[1] || filenameMatch?.[2] || ""
+          ).trim();
+
+          const item = this.items.find((it) => it.id === id) || {};
+          const fallbackFilename = this.getDisplayName(item) || item.filename || `file-${id}`;
+          const targetFilename = responseFilename || fallbackFilename;
+
+          const downloadUrl = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = targetFilename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(downloadUrl);
+        } catch (err) {
+          errors.push(err);
+        }
+      }
+
+      if (errors.length) {
+        this.error = errors[0]?.response?.data?.detail || errors[0]?.message ||
+          "One or more downloads failed.";
+      }
+
+      this.downloadingMultiple = false;
+    },
+    async downloadFocusedItem() {
+      const id = this.focusedItemId;
+      if (!id || this.downloadingMultiple) return;
+      this.error = null;
+      this.downloadingMultiple = true;
 
       try {
-        const response = await downloadFile(itemId);
+        const response = await downloadFile(id);
         const blob = new Blob([response.data], {
           type: response.headers?.["content-type"] || "application/octet-stream",
         });
@@ -299,7 +377,9 @@ export default {
         const responseFilename = decodeURIComponent(
           filenameMatch?.[1] || filenameMatch?.[2] || ""
         ).trim();
-        const fallbackFilename = this.getDisplayName(item) || item.filename || `file-${itemId}`;
+
+        const item = this.items.find((it) => it.id === id) || {};
+        const fallbackFilename = this.getDisplayName(item) || item.filename || `file-${id}`;
         const targetFilename = responseFilename || fallbackFilename;
 
         const downloadUrl = URL.createObjectURL(blob);
@@ -311,22 +391,26 @@ export default {
         link.remove();
         URL.revokeObjectURL(downloadUrl);
       } catch (err) {
-        this.error = err?.response?.data?.detail || err.message || "Failed to download item.";
+        this.error = err?.response?.data?.detail || err?.message || "Failed to download item.";
       } finally {
-        this.downloadingItemId = null;
+        this.downloadingMultiple = false;
       }
     },
+
+    async removeFocusedItem() {
+      const id = this.focusedItemId;
+      if (!id || this.deletingItemId !== null) return;
+      await this.handleDelete(id);
+      if (this.focusedItemId === id) this.focusedItemId = null;
+    },
     async handleDelete(itemId) {
-      this.selectedItemId = itemId;
       this.error = null;
       this.deletingItemId = itemId;
 
       try {
         await deleteFile(itemId);
         this.items = this.items.filter((item) => item.id !== itemId);
-        if (this.selectedItemId === itemId) {
-          this.selectedItemId = null;
-        }
+        this.selectedIds = this.selectedIds.filter((id) => id !== itemId);
       } catch (err) {
         this.error = err?.response?.data?.detail || err.message || "Failed to delete item.";
       } finally {
@@ -606,6 +690,7 @@ export default {
   color: white;
   border-radius: 8px;
   min-height: 42px;
+  min-width: 140px;
   padding: 0 12px;
   font-size: 14px;
   font-weight: 600;
@@ -626,6 +711,7 @@ export default {
   color: white;
   border-radius: 8px;
   min-height: 42px;
+  min-width: 140px;
   padding: 0 12px;
   font-size: 14px;
   font-weight: 600;
@@ -760,6 +846,8 @@ export default {
 }
 
 .download-btn {
+  /* default styling for small inline download buttons (per-row)
+     Top-level download button in the controls row is overridden below */
   flex-shrink: 0;
   border: none;
   background: #0f766e;
@@ -778,6 +866,23 @@ export default {
 .download-btn:disabled {
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+/* Make the top controls buttons consistent */
+.controls .download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  min-width: 140px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.controls .download-btn:hover:not(:disabled) {
+  background: #0d9488;
 }
 
 .delete-btn {
