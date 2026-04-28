@@ -29,9 +29,14 @@ def _is_circular_reference(tag_id: int, parent_id: int, db: Session) -> bool:
     return False
 
 
-def _build_tag_hierarchy(tag: models.Tag) -> schemas.TagHierarchy:
+def _build_tag_hierarchy(tag: models.Tag, db: Session) -> schemas.TagHierarchy:
     """Convert a tag and its children to TagHierarchy schema."""
-    children = [_build_tag_hierarchy(child) for child in tag.children]
+    # Explicitly query for children instead of relying on backref
+    children_tags = db.query(models.Tag).filter(
+        models.Tag.parent_id == tag.id
+    ).order_by(models.Tag.name).all()
+    
+    children = [_build_tag_hierarchy(child, db) for child in children_tags]
     return schemas.TagHierarchy(
         id=tag.id,
         name=tag.name,
@@ -50,7 +55,7 @@ def list_tags(db: Session = Depends(get_db), _: models.User = Depends(get_curren
 def get_tags_hierarchy(db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
     """Get all top-level tags with their hierarchical structure (nested children)."""
     top_level_tags = db.query(models.Tag).filter(models.Tag.parent_id.is_(None)).order_by(models.Tag.name).all()
-    return [_build_tag_hierarchy(tag) for tag in top_level_tags]
+    return [_build_tag_hierarchy(tag, db) for tag in top_level_tags]
 
 
 @router.post("/", response_model=schemas.TagRead, status_code=201)

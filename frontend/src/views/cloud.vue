@@ -33,21 +33,12 @@
             Clear filters ({{ activeTagFilters.length }})
           </button>
 
-          <div v-if="availableTags.length === 0" class="tags-empty-state">
-            {{ tagSidebarMessage }}
-          </div>
-
-          <div v-else class="tags-list" role="list">
-            <button
-              v-for="tag in availableTags"
-              :key="tag"
-              class="tag-chip"
-              :class="{ active: activeTagFilters.includes(tag) }"
-              @click="toggleTagFilter(tag)"
-            >
-              {{ tag }}
-            </button>
-          </div>
+          <HierarchicalTagList
+            :active-filters="activeTagFilters"
+            empty-message="No tags in the database"
+            @tag-clicked="toggleTagFilter"
+            @tags-updated="fetchItems"
+          />
         </template>
       </aside>
 
@@ -150,9 +141,13 @@
 <script>
 import { deleteFile, downloadFile, listFiles } from "../api.js";
 import { readFileMetadataMap } from "../utils/fileMetadata.js";
+import HierarchicalTagList from "../components/HierarchicalTagList.vue";
 
 export default {
   name: "StoredItems",
+  components: {
+    HierarchicalTagList,
+  },
   data() {
     return {
       items: [],
@@ -168,25 +163,6 @@ export default {
     };
   },
   computed: {
-    availableTags() {
-      const tagSet = new Set();
-
-      this.items.forEach((item) => {
-        const itemTags = Array.isArray(item.tags) ? item.tags : [];
-        itemTags.forEach((tag) => {
-          const tagName = String(tag?.name || "").trim().toLowerCase();
-          if (tagName) tagSet.add(tagName);
-        });
-      });
-
-      return Array.from(tagSet).sort((tagA, tagB) => tagA.localeCompare(tagB));
-    },
-    tagSidebarMessage() {
-      if (this.items.length === 0) {
-        return "No tags and no items in the database.";
-      }
-      return "No tags were generated.";
-    },
     filteredItems() {
       const query = this.searchQuery.trim().toLowerCase();
       return this.items.filter((item) => {
