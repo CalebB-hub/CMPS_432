@@ -1,6 +1,6 @@
 <template>
     <div class="page">
-        <nav class="navbar">
+        <!-- <nav class="navbar">
             <div class="navbar-brand">☁ Cloud Distributions</div>
             <div class="navbar-links">
                 <router-link to="/cloud" class="nav-link">Cloud</router-link>
@@ -9,7 +9,7 @@
                 >
                 <router-link to="/" class="nav-link">Home</router-link>
             </div>
-        </nav>
+        </nav> -->
 
         <header class="header">
             <h1>Add Cloud Item</h1>
