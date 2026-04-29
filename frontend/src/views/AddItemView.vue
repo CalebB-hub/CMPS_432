@@ -191,7 +191,6 @@ function saveDescriptionLocally(fileId) {
                 description: description.value,
         });
 }
-}
 
 function storePendingTag() {
     const normalized = pendingTag.value.trim().toLowerCase();
