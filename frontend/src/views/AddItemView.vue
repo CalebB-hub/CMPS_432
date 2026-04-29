@@ -48,29 +48,34 @@
                     <p class="label-like">Tags</p>
                     <div class="tag-entry-row">
                         <input
-                            v-model.trim="pendingTag"
+                            v-model.trim="newTagName"
                             type="text"
                             class="tag-input"
-                            placeholder="Type a tag and store it"
-                            list="existing-tags"
-                            @keydown.enter.prevent="storePendingTag"
+                            placeholder="Add a new tag"
+                            @keydown.enter.prevent="addNewTag"
                         />
+                        <select
+                            v-model="newTagParentName"
+                            class="tag-parent-select"
+                            :disabled="!newTagName.trim()"
+                        >
+                            <option value="">No parent</option>
+                            <option
+                                v-for="tag in parentOptions"
+                                :key="tag"
+                                :value="tag"
+                            >
+                                {{ tag }}
+                            </option>
+                        </select>
                         <button
                             type="button"
                             class="store-tag-btn"
-                            @click="storePendingTag"
+                            @click="addNewTag"
                         >
-                            Store
+                            Add & Select
                         </button>
                     </div>
-
-                    <datalist id="existing-tags">
-                        <option
-                            v-for="tag in availableTags"
-                            :key="tag.id"
-                            :value="tag.name"
-                        />
-                    </datalist>
 
                     <div v-if="tagsLoading" class="tags-status">
                         Loading tag suggestions...
@@ -79,25 +84,33 @@
                         {{ tagsError }}
                     </div>
 
-                    <div v-if="stagedTags.length === 0" class="tags-status">
-                        No tags stored yet.
+                    <div v-if="orderedTags.length === 0" class="tags-status">
+                        No tags available yet.
                     </div>
 
-                    <div v-else class="staged-tags-list">
+                    <div v-else class="tags-checklist">
+                        <label
+                            v-for="tag in orderedTags"
+                            :key="tag.name"
+                            class="tag-check-item"
+                            :style="{ paddingLeft: `${tag.depth * 16 + 8}px` }"
+                        >
+                            <input
+                                type="checkbox"
+                                :checked="selectedTagSet.has(tag.name)"
+                                @change="toggleTag(tag.name, $event.target.checked)"
+                            />
+                            <span>{{ tag.name }}</span>
+                        </label>
+                    </div>
+
+                    <div v-if="selectedTagNames.length > 0" class="staged-tags-list">
                         <div
-                            v-for="tag in stagedTags"
+                            v-for="tag in selectedTagNames"
                             :key="tag"
                             class="staged-tag-item"
                         >
                             <span>{{ tag }}</span>
-                            <button
-                                type="button"
-                                class="remove-tag-btn"
-                                aria-label="Remove tag"
-                                @click="removeTag(tag)"
-                            >
-                                ×
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -128,24 +141,42 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { computed, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { listTags, uploadFile } from "../api.js";
 import { writeFileMetadata } from "../utils/fileMetadata.js";
+import {
+    buildOrderedTagList,
+    buildTagGraph,
+    expandSelectedWithAncestors,
+    normalizeTagName,
+    toggleTagSelection,
+} from "../utils/tagSelection.js";
 
 const router = useRouter();
 
 const description = ref("");
 const fileName = ref("");
 const selectedFile = ref(null);
-const pendingTag = ref("");
-const stagedTags = ref([]);
 const availableTags = ref([]);
+const selectedTagSet = ref(new Set());
+const newTagName = ref("");
+const newTagParentName = ref("");
+const newTagParents = ref({});
 const tagsLoading = ref(false);
 const tagsError = ref("");
 const saving = ref(false);
 const error = ref("");
 const success = ref("");
+
+const orderedTags = computed(() => buildOrderedTagList(availableTags.value));
+const parentOptions = computed(() =>
+    orderedTags.value.map((tag) => tag.name).sort((a, b) => a.localeCompare(b)),
+);
+const selectedTagNames = computed(() =>
+    Array.from(selectedTagSet.value).sort((a, b) => a.localeCompare(b)),
+);
+const tagGraph = computed(() => buildTagGraph(availableTags.value));
 
 onMounted(async () => {
     tagsLoading.value = true;
@@ -192,17 +223,50 @@ function saveDescriptionLocally(fileId) {
         });
 }
 
-function storePendingTag() {
-    const normalized = pendingTag.value.trim().toLowerCase();
+function addNewTag() {
+    const normalized = normalizeTagName(newTagName.value);
     if (!normalized) return;
-    if (!stagedTags.value.includes(normalized)) {
-        stagedTags.value = [...stagedTags.value, normalized];
+
+    const exists = availableTags.value.some(
+        (tag) => normalizeTagName(tag.name) === normalized,
+    );
+
+    if (!exists) {
+        const { nameToTag } = tagGraph.value;
+        const parentName = normalizeTagName(newTagParentName.value);
+        const parentTag = parentName ? nameToTag.get(parentName) : null;
+
+        availableTags.value = [
+            ...availableTags.value,
+            {
+                id: -(availableTags.value.length + 1),
+                name: normalized,
+                parent_id: parentTag ? parentTag.id : null,
+            },
+        ];
+
+        if (parentName) {
+            newTagParents.value = {
+                ...newTagParents.value,
+                [normalized]: parentName,
+            };
+        }
     }
-    pendingTag.value = "";
+
+    toggleTag(normalized, true);
+    newTagName.value = "";
+    newTagParentName.value = "";
 }
 
-function removeTag(tagName) {
-    stagedTags.value = stagedTags.value.filter((tag) => tag !== tagName);
+function toggleTag(tagName, checked) {
+    const { parentByName, childrenByName } = tagGraph.value;
+    selectedTagSet.value = toggleTagSelection({
+        selectedSet: selectedTagSet.value,
+        tagName,
+        checked,
+        parentByName,
+        childrenByName,
+    });
 }
 
 async function handleSave() {
@@ -225,11 +289,22 @@ async function handleSave() {
     saving.value = true;
     try {
         const fileToUpload = buildFileToUpload();
-        const tagsCsv = stagedTags.value.join(",");
-                const response = await uploadFile(fileToUpload, tagsCsv);
-                saveDescriptionLocally(response?.data?.id);
-        stagedTags.value = [];
-        pendingTag.value = "";
+        const { parentByName } = tagGraph.value;
+        const expandedSelection = expandSelectedWithAncestors(
+            selectedTagNames.value,
+            parentByName,
+        );
+        const tagsCsv = Array.from(expandedSelection).join(",");
+        const response = await uploadFile(
+            fileToUpload,
+            tagsCsv,
+            newTagParents.value,
+        );
+        saveDescriptionLocally(response?.data?.id);
+        selectedTagSet.value = new Set();
+        newTagName.value = "";
+        newTagParentName.value = "";
+        newTagParents.value = {};
         success.value = "Item saved successfully. Redirecting to cloud page...";
         setTimeout(() => {
             router.push("/cloud");
@@ -351,10 +426,22 @@ input[type="file"]:focus {
     align-items: center;
     gap: 8px;
     margin-top: 8px;
+    flex-wrap: wrap;
 }
 
 .tag-input {
+    flex: 2;
+    min-width: 180px;
+}
+
+.tag-parent-select {
     flex: 1;
+    min-width: 160px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 15px;
+    background: #fff;
 }
 
 .store-tag-btn {
@@ -387,27 +474,36 @@ input[type="file"]:focus {
     margin-top: 8px;
 }
 
+.tags-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px;
+    background: #f8fafc;
+}
+
+.tag-check-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #1e293b;
+}
+
 .staged-tag-item {
     display: flex;
     align-items: center;
-    gap: 6px;
     border: 1px solid #dbeafe;
     border-radius: 999px;
     background: #eff6ff;
     color: #1e3a8a;
     padding: 6px 10px;
     font-size: 13px;
-}
-
-.remove-tag-btn {
-    border: none;
-    background: transparent;
-    color: #1e3a8a;
-    font-size: 14px;
-    font-weight: 700;
-    line-height: 1;
-    padding: 0;
-    cursor: pointer;
 }
 
 .tags-status {

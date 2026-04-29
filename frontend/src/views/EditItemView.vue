@@ -38,40 +38,53 @@
           <p class="label-like">Tags</p>
           <div class="tag-entry-row">
             <input
-              v-model.trim="pendingTag"
+              v-model.trim="newTagName"
               type="text"
               class="tag-input"
-              placeholder="Type a tag and store it"
-              list="existing-tags"
-              @keydown.enter.prevent="storePendingTag"
+              placeholder="Add a new tag"
+              @keydown.enter.prevent="addNewTag"
             />
-            <button type="button" class="store-tag-btn" @click="storePendingTag">
-              Store
+            <select
+              v-model="newTagParentName"
+              class="tag-parent-select"
+              :disabled="!newTagName.trim()"
+            >
+              <option value="">No parent</option>
+              <option v-for="tag in parentOptions" :key="tag" :value="tag">
+                {{ tag }}
+              </option>
+            </select>
+            <button type="button" class="store-tag-btn" @click="addNewTag">
+              Add & Select
             </button>
           </div>
-
-          <datalist id="existing-tags">
-            <option v-for="tag in availableTags" :key="tag.id" :value="tag.name" />
-          </datalist>
 
           <div v-if="tagsLoading" class="tags-status">Loading tag suggestions...</div>
           <div v-else-if="tagsError" class="tags-status error">{{ tagsError }}</div>
 
-          <div v-if="stagedTags.length === 0" class="tags-status">
-            No tags stored yet.
+          <div v-if="orderedTags.length === 0" class="tags-status">
+            No tags available yet.
           </div>
 
-          <div v-else class="staged-tags-list">
-            <div v-for="tag in stagedTags" :key="tag" class="staged-tag-item">
+          <div v-else class="tags-checklist">
+            <label
+              v-for="tag in orderedTags"
+              :key="tag.name"
+              class="tag-check-item"
+              :style="{ paddingLeft: `${tag.depth * 16 + 8}px` }"
+            >
+              <input
+                type="checkbox"
+                :checked="selectedTagSet.has(tag.name)"
+                @change="toggleTag(tag.name, $event.target.checked)"
+              />
+              <span>{{ tag.name }}</span>
+            </label>
+          </div>
+
+          <div v-if="selectedTagNames.length > 0" class="staged-tags-list">
+            <div v-for="tag in selectedTagNames" :key="tag" class="staged-tag-item">
               <span>{{ tag }}</span>
-              <button
-                type="button"
-                class="remove-tag-btn"
-                aria-label="Remove tag"
-                @click="removeTag(tag)"
-              >
-                ×
-              </button>
             </div>
           </div>
         </div>
@@ -93,10 +106,17 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getFile, listTags, updateFileTags } from '../api.js'
 import { readFileMetadata, writeFileMetadata } from '../utils/fileMetadata.js'
+import {
+  buildOrderedTagList,
+  buildTagGraph,
+  expandSelectedWithAncestors,
+  normalizeTagName,
+  toggleTagSelection,
+} from '../utils/tagSelection.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -110,12 +130,23 @@ const success = ref('')
 
 const description = ref('')
 const fileName = ref('')
-const pendingTag = ref('')
-const stagedTags = ref([])
+const selectedTagSet = ref(new Set())
+const newTagName = ref('')
+const newTagParentName = ref('')
+const newTagParents = ref({})
 
 const availableTags = ref([])
 const tagsLoading = ref(false)
 const tagsError = ref('')
+
+const orderedTags = computed(() => buildOrderedTagList(availableTags.value))
+const parentOptions = computed(() =>
+  orderedTags.value.map((tag) => tag.name).sort((a, b) => a.localeCompare(b)),
+)
+const selectedTagNames = computed(() =>
+  Array.from(selectedTagSet.value).sort((a, b) => a.localeCompare(b)),
+)
+const tagGraph = computed(() => buildTagGraph(availableTags.value))
 
 onMounted(async () => {
   if (!Number.isFinite(fileId) || fileId <= 0) {
@@ -136,9 +167,11 @@ onMounted(async () => {
     fileName.value = String(metadata.displayName || file.original_filename || '').trim()
     description.value = String(metadata.description || '').trim()
 
-    stagedTags.value = (Array.isArray(file.tags) ? file.tags : [])
+    selectedTagSet.value = new Set(
+      (Array.isArray(file.tags) ? file.tags : [])
       .map((tag) => String(tag?.name || '').trim().toLowerCase())
-      .filter(Boolean)
+      .filter(Boolean),
+    )
 
     availableTags.value = Array.isArray(tagsResponse?.data) ? tagsResponse.data : []
   } catch (e) {
@@ -154,17 +187,47 @@ onMounted(async () => {
   }
 })
 
-function storePendingTag() {
-  const normalized = pendingTag.value.trim().toLowerCase()
+function addNewTag() {
+  const normalized = normalizeTagName(newTagName.value)
   if (!normalized) return
-  if (!stagedTags.value.includes(normalized)) {
-    stagedTags.value = [...stagedTags.value, normalized]
+
+  const exists = availableTags.value.some((tag) => normalizeTagName(tag.name) === normalized)
+  if (!exists) {
+    const { nameToTag } = tagGraph.value
+    const parentName = normalizeTagName(newTagParentName.value)
+    const parentTag = parentName ? nameToTag.get(parentName) : null
+
+    availableTags.value = [
+      ...availableTags.value,
+      {
+        id: -(availableTags.value.length + 1),
+        name: normalized,
+        parent_id: parentTag ? parentTag.id : null,
+      },
+    ]
+
+    if (parentName) {
+      newTagParents.value = {
+        ...newTagParents.value,
+        [normalized]: parentName,
+      }
+    }
   }
-  pendingTag.value = ''
+
+  toggleTag(normalized, true)
+  newTagName.value = ''
+  newTagParentName.value = ''
 }
 
-function removeTag(tagName) {
-  stagedTags.value = stagedTags.value.filter((tag) => tag !== tagName)
+function toggleTag(tagName, checked) {
+  const { parentByName, childrenByName } = tagGraph.value
+  selectedTagSet.value = toggleTagSelection({
+    selectedSet: selectedTagSet.value,
+    tagName,
+    checked,
+    parentByName,
+    childrenByName,
+  })
 }
 
 async function handleSave() {
@@ -183,7 +246,9 @@ async function handleSave() {
 
   saving.value = true
   try {
-    await updateFileTags(fileId, stagedTags.value)
+    const { parentByName } = tagGraph.value
+    const expandedSelection = expandSelectedWithAncestors(selectedTagNames.value, parentByName)
+    await updateFileTags(fileId, Array.from(expandedSelection), newTagParents.value)
     writeFileMetadata(fileId, {
       displayName: fileName.value,
       description: description.value,
@@ -305,9 +370,17 @@ input[type='text']:focus {
 
 .tag-entry-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr 1fr auto;
   gap: 8px;
   margin-top: 6px;
+}
+
+.tag-parent-select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 15px;
+  background: #fff;
 }
 
 .store-tag-btn {
@@ -341,25 +414,36 @@ input[type='text']:focus {
   gap: 8px;
 }
 
+.tags-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.tag-check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #1e293b;
+}
+
 .staged-tag-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   border: 1px solid #bfdbfe;
   background: #eff6ff;
   color: #1e40af;
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 0.86rem;
-}
-
-.remove-tag-btn {
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
 }
 
 .actions {

@@ -1,5 +1,6 @@
 """Tests for auth, files, and tags API endpoints."""
 import io
+import json
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -148,3 +149,101 @@ def test_health(client):
     r = client.get("/api/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+def test_upload_inherits_parent_tags(client):
+    _register(client, username="ivy", email="ivy@example.com")
+    tok = _token(client, username="ivy")
+    headers = _auth_headers(tok)
+
+    r1 = client.post("/api/tags/", json={"name": "technology"}, headers=headers)
+    assert r1.status_code == 201
+    parent_id = r1.json()["id"]
+
+    r2 = client.post(
+        f"/api/tags/{parent_id}/children",
+        json={"name": "phone"},
+        headers=headers,
+    )
+    assert r2.status_code == 201
+
+    r = client.post(
+        "/api/files/",
+        files={"file": ("phone.txt", io.BytesIO(b"data"), "text/plain")},
+        data={"tags": "phone"},
+        headers=headers,
+    )
+    assert r.status_code == 201
+    tag_names = {t["name"] for t in r.json()["tags"]}
+    assert "phone" in tag_names
+    assert "technology" in tag_names
+
+
+def test_upload_unknown_tag_with_parent_hint(client):
+    _register(client, username="jack", email="jack@example.com")
+    tok = _token(client, username="jack")
+    headers = _auth_headers(tok)
+
+    parent_name = "technology_jack"
+    r1 = client.post("/api/tags/", json={"name": parent_name}, headers=headers)
+    assert r1.status_code == 201
+
+    r = client.post(
+        "/api/files/",
+        files={"file": ("watch.txt", io.BytesIO(b"data"), "text/plain")},
+        data={
+            "tags": "smartwatch",
+            "tag_parents": json.dumps({"smartwatch": parent_name}),
+        },
+        headers=headers,
+    )
+    assert r.status_code == 201
+
+    tag_names = {t["name"] for t in r.json()["tags"]}
+    assert "smartwatch" in tag_names
+    assert parent_name in tag_names
+
+    tags = client.get("/api/tags/", headers=headers)
+    assert tags.status_code == 200
+    by_name = {t["name"]: t for t in tags.json()}
+    assert by_name["smartwatch"]["parent_id"] == by_name[parent_name]["id"]
+
+
+def test_patch_unknown_tag_with_parent_hint_inherits_full_ancestor_chain(client):
+    _register(client, username="kyle", email="kyle@example.com")
+    tok = _token(client, username="kyle")
+    headers = _auth_headers(tok)
+
+    root_name = "technology_kyle"
+    child_name = "phone_kyle"
+
+    root = client.post("/api/tags/", json={"name": root_name}, headers=headers)
+    assert root.status_code == 201
+    technology_id = root.json()["id"]
+
+    phone = client.post(
+        f"/api/tags/{technology_id}/children",
+        json={"name": child_name},
+        headers=headers,
+    )
+    assert phone.status_code == 201
+
+    created_file = client.post(
+        "/api/files/",
+        files={"file": ("android.txt", io.BytesIO(b"data"), "text/plain")},
+        headers=headers,
+    )
+    assert created_file.status_code == 201
+    file_id = created_file.json()["id"]
+
+    updated = client.patch(
+        f"/api/files/{file_id}/tags",
+        json={"tags": ["android"], "tag_parents": {"android": child_name}},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+
+    tag_names = {t["name"] for t in updated.json()["tags"]}
+    assert "android" in tag_names
+    assert child_name in tag_names
+    assert root_name in tag_names

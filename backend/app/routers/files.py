@@ -1,8 +1,9 @@
 import logging
 import os
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional, Set, Union
 import io
+import json
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -19,13 +20,131 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/files", tags=["files"])
 
 
-def _get_or_create_tag(db: Session, name: str) -> models.Tag:
-    tag = db.query(models.Tag).filter(models.Tag.name == name.strip().lower()).first()
-    if not tag:
-        tag = models.Tag(name=name.strip().lower())
-        db.add(tag)
-        db.flush()
+def _normalize_tag_name(name: str) -> str:
+    return name.strip().lower()
+
+
+def _find_tag_by_name(
+    db: Session,
+    name: str,
+    parent_name: Optional[str] = None,
+) -> Optional[models.Tag]:
+    normalized_name = _normalize_tag_name(name)
+    query = db.query(models.Tag).filter(models.Tag.name == normalized_name)
+    candidates = query.all()
+    if not candidates:
+        return None
+
+    if parent_name is None:
+        return candidates[0]
+
+    normalized_parent_name = _normalize_tag_name(parent_name)
+    for candidate in candidates:
+        if candidate.parent_id is None:
+            continue
+        parent = db.query(models.Tag).filter(models.Tag.id == candidate.parent_id).first()
+        if parent and parent.name == normalized_parent_name:
+            return candidate
+
+    return candidates[0]
+
+
+def _get_or_create_tag(
+    db: Session,
+    name: str,
+    parent_name: Optional[str] = None,
+) -> models.Tag:
+    tag = _find_tag_by_name(db, name, parent_name=parent_name)
+    if tag:
+        return tag
+
+    parent_id = None
+    if parent_name:
+        parent_tag = _find_tag_by_name(db, parent_name)
+        if parent_tag:
+            parent_id = parent_tag.id
+
+    tag = models.Tag(name=_normalize_tag_name(name), parent_id=parent_id)
+    db.add(tag)
+    db.flush()
     return tag
+
+
+def _get_ancestor_tags(db: Session, tag: models.Tag) -> List[models.Tag]:
+    ancestors: List[models.Tag] = []
+    seen: Set[int] = set()
+    current = tag
+    while current.parent_id is not None and current.parent_id not in seen:
+        seen.add(current.parent_id)
+        parent = db.query(models.Tag).filter(models.Tag.id == current.parent_id).first()
+        if parent is None:
+            break
+        ancestors.append(parent)
+        current = parent
+    return ancestors
+
+
+def _build_expanded_tags(
+    db: Session,
+    tag_names: List[str],
+    tag_parents: Optional[Dict[str, Optional[str]]] = None,
+) -> List[models.Tag]:
+    normalized_names = [_normalize_tag_name(name) for name in tag_names if name and name.strip()]
+    if not normalized_names:
+        return []
+
+    parent_hints: Dict[str, Optional[str]] = {}
+    if tag_parents:
+        for child_name, parent_name in tag_parents.items():
+            normalized_child = _normalize_tag_name(child_name)
+            parent_hints[normalized_child] = _normalize_tag_name(parent_name) if parent_name else None
+
+    by_id: Dict[int, models.Tag] = {}
+    for name in normalized_names:
+        tag = _get_or_create_tag(db, name, parent_name=parent_hints.get(name))
+        by_id[tag.id] = tag
+        for ancestor in _get_ancestor_tags(db, tag):
+            by_id[ancestor.id] = ancestor
+
+    return list(by_id.values())
+
+
+def _parse_tag_parents_form_value(raw: Optional[str]) -> Dict[str, Optional[str]]:
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            return {}
+        return {
+            str(k): (str(v) if v is not None else None)
+            for k, v in payload.items()
+        }
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid tag_parents payload")
+
+
+def _extract_tag_update_payload(
+    tag_payload: Union[List[str], schemas.FileTagUpdate],
+) -> tuple[List[str], Dict[str, Optional[str]]]:
+    if isinstance(tag_payload, list):
+        return tag_payload, {}
+    return tag_payload.tags, tag_payload.tag_parents
+
+
+def _parse_csv_tags(raw_tags: Optional[str]) -> List[str]:
+    if not raw_tags:
+        return []
+    return [tag for tag in raw_tags.split(",") if tag.strip()]
+
+
+def _assign_expanded_tags(
+    db: Session,
+    db_file: models.File,
+    tag_names: List[str],
+    tag_parents: Optional[Dict[str, Optional[str]]] = None,
+) -> None:
+    db_file.tags = _build_expanded_tags(db, tag_names, tag_parents=tag_parents)
 
 
 def _file_to_response(db_file: models.File) -> schemas.FileRead:
@@ -67,6 +186,7 @@ def list_files(
 async def upload_file(
     file: UploadFile = File(...),
     tags: Optional[str] = Form(None),
+    tag_parents: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -109,10 +229,10 @@ async def upload_file(
     )
     db.add(db_file)
 
-    if tags:
-        for tag_name in tags.split(","):
-            if tag_name.strip():
-                db_file.tags.append(_get_or_create_tag(db, tag_name))
+    parsed_tags = _parse_csv_tags(tags)
+    parsed_tag_parents = _parse_tag_parents_form_value(tag_parents)
+    if parsed_tags:
+        _assign_expanded_tags(db, db_file, parsed_tags, tag_parents=parsed_tag_parents)
     
     db.commit()
     db.refresh(db_file)
@@ -178,7 +298,7 @@ def get_file(
 @router.patch("/{file_id}/tags", response_model=schemas.FileRead)
 def update_file_tags(
     file_id: int,
-    tag_names: List[str],
+    tag_payload: Union[List[str], schemas.FileTagUpdate],
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -189,7 +309,8 @@ def update_file_tags(
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    db_file.tags = [_get_or_create_tag(db, name) for name in tag_names if name.strip()]
+    tag_names, tag_parents = _extract_tag_update_payload(tag_payload)
+    _assign_expanded_tags(db, db_file, tag_names, tag_parents=tag_parents)
     db.commit()
     db.refresh(db_file)
     return _file_to_response(db_file)

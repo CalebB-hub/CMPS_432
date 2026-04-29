@@ -50,10 +50,13 @@ export const listFiles = (tags = null) => {
   return api.get('/files/', { params })
 }
 
-export const uploadFile = (file, tags = '') => {
+export const uploadFile = (file, tags = '', tagParents = null) => {
   const form = new FormData()
   form.append('file', file)
   if (tags) form.append('tags', tags)
+  if (tagParents && Object.keys(tagParents).length > 0) {
+    form.append('tag_parents', JSON.stringify(tagParents))
+  }
   return api.post('/files/', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
@@ -66,8 +69,12 @@ export const getFile = (id) => api.get(`/files/${id}`)
 export const downloadFile = (id) =>
   api.get(`/files/${id}/download`, { responseType: 'blob' })
 
-export const updateFileTags = (id, tagNames) =>
-  api.patch(`/files/${id}/tags`, tagNames)
+export const updateFileTags = (id, tagNames, tagParents = null) => {
+  if (tagParents && Object.keys(tagParents).length > 0) {
+    return api.patch(`/files/${id}/tags`, { tags: tagNames, tag_parents: tagParents })
+  }
+  return api.patch(`/files/${id}/tags`, tagNames)
+}
 
 // ── Tags ──────────────────────────────────────────────────────────────────────
 

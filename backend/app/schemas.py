@@ -1,5 +1,5 @@
 import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
@@ -49,6 +49,11 @@ class FileBase(BaseModel):
 
 class FileCreate(FileBase):
     pass
+
+
+class FileTagUpdate(BaseModel):
+    tags: List[str] = []
+    tag_parents: Dict[str, Optional[str]] = {}
 
 
 class FileRead(FileBase):
