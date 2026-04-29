@@ -31,6 +31,12 @@ const routes = [
     meta: { requiresAuth: false },
   },
   {
+    path: '/cloud/edit/:id',
+    name: 'cloud-edit',
+    component: () => import('../views/EditItemView.vue'),
+    meta: { requiresAuth: false },
+  },
+  {
     path: '/settings',
     name: 'settings',
     component: () => import('../views/SettingsView.vue'),

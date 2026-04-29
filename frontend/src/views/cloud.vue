@@ -10,56 +10,159 @@
       </div>
     </nav>
 
-    <header class="header">
-      <h1>Cloud Storage Items</h1>
-      <p>Files loaded from your local API server</p>
-    </header>
+    <div
+      class="content-layout"
+      :style="{ '--sidebar-width': isTagSidebarCollapsed ? '64px' : '280px' }"
+    >
+      <button class="sidebar-toggle-btn" @click="toggleTagSidebar">
+        {{ isTagSidebarCollapsed ? '⟩' : '⟨' }}
+      </button>
 
-    <section class="controls">
-      <input
-        v-model="searchQuery"
-        type="text"
-        placeholder="Search files by name..."
-        aria-label="Search files by name"
-      />
-      <button class="add-btn" @click="goToAddItem">Add Item</button>
-    </section>
+      <aside class="tags-sidebar" :class="{ collapsed: isTagSidebarCollapsed }">
+        <h2 class="sidebar-title">{{ isTagSidebarCollapsed ? 'Tags' : 'Tags' }}</h2>
+        <p v-if="!isTagSidebarCollapsed" class="sidebar-subtitle">
+          Filter cloud items by one or more tags.
+        </p>
 
-    <section v-if="error" class="error-box">
-      <strong>Error:</strong> {{ error }}
-    </section>
+        <template v-if="!isTagSidebarCollapsed">
+          <button
+            v-if="activeTagFilters.length > 0"
+            class="clear-filters-btn"
+            @click="clearTagFilters"
+          >
+            Clear filters ({{ activeTagFilters.length }})
+          </button>
 
-    <section v-if="loading" class="status-box">
-      Loading items from server...
-    </section>
-
-    <section v-else>
-      <div class="items-container">
-        <div v-if="items.length === 0" class="items-empty-state">
-          No items found in the database.
-        </div>
-
-        <div v-else-if="filteredItems.length === 0" class="items-empty-state">
-          No files match "{{ searchQuery }}".
-        </div>
-
-        <div v-else class="items-grid">
-          <div v-for="item in filteredItems" :key="item.id" class="item-card">
-            <h2>{{ item.original_filename }}</h2>
-            <p><strong>ID:</strong> {{ item.id }}</p>
-            <p><strong>Stored Name:</strong> {{ item.filename }}</p>
-            <p><strong>Size:</strong> {{ formatBytes(item.size) }}</p>
-            <p><strong>Uploaded:</strong> {{ formatDate(item.uploaded_at) }}</p>
-            <p><strong>Tags:</strong> {{ formatTags(item.tags) }}</p>
+          <div v-if="availableTags.length === 0" class="tags-empty-state">
+            {{ tagSidebarMessage }}
           </div>
-        </div>
-      </div>
-    </section>
+
+          <div v-else class="tags-list" role="list">
+            <button
+              v-for="tag in availableTags"
+              :key="tag"
+              class="tag-chip"
+              :class="{ active: activeTagFilters.includes(tag) }"
+              @click="toggleTagFilter(tag)"
+            >
+              {{ tag }}
+            </button>
+          </div>
+        </template>
+      </aside>
+
+      <main class="main-content">
+        <header class="header">
+          <h1>Cloud Storage Items</h1>
+          <p>Files loaded from your local API server</p>
+        </header>
+
+        <section class="controls">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search files by name..."
+            aria-label="Search files by name"
+          />
+          <button class="add-btn" @click="goToAddItem">Add Item</button>
+          <template v-if="hasSelectedItem">
+            <button
+              class="remove-btn"
+              :disabled="deletingMultiple"
+              @click="removeSelectedItems"
+            >
+              {{ deletingMultiple ? "Removing..." : `Remove Selected (${selectedCount})` }}
+            </button>
+            <button
+              class="download-btn top-download"
+              :disabled="downloadingMultiple"
+              @click="downloadSelectedItems"
+            >
+              {{ downloadingMultiple ? "Downloading..." : `Download Selected (${selectedCount})` }}
+            </button>
+          </template>
+          <template v-else>
+            <button
+              class="remove-btn"
+              :disabled="!focusedItemId || deletingItemId !== null"
+              @click="removeFocusedItem"
+            >
+              {{ deletingItemId !== null ? "Removing..." : "Remove" }}
+            </button>
+            <button
+              class="download-btn top-download"
+              :disabled="!focusedItemId || downloadingMultiple"
+              @click="downloadFocusedItem"
+            >
+              {{ downloadingMultiple ? "Downloading..." : "Download" }}
+            </button>
+          </template>
+        </section>
+
+        <section v-if="error" class="error-box">
+          <strong>Error:</strong> {{ error }}
+        </section>
+
+        <section v-if="loading" class="status-box">
+          Loading items from server...
+        </section>
+
+        <section v-else>
+          <div class="items-container">
+            <div v-if="items.length === 0" class="items-empty-state">
+              No items found in the database.
+            </div>
+
+            <div v-else-if="filteredItems.length === 0" class="items-empty-state">
+              No files match the current search/filter.
+            </div>
+
+            <div v-else class="items-list" role="list">
+              <div
+                v-for="item in filteredItems"
+                :key="item.id"
+                class="item-row"
+                :class="{ selected: selectedIds.includes(item.id) || focusedItemId === item.id }"
+                role="button"
+                tabindex="0"
+                @click="focusedItemId = item.id; error = null"
+                @keydown.enter.prevent="focusedItemId = item.id"
+                @keydown.space.prevent="focusedItemId = item.id"
+              >
+                <div class="item-row-content">
+                  <div class="item-row-title">{{ getDisplayName(item) }}</div>
+                  <div class="item-row-meta">
+                    <span><strong>ID:</strong> {{ item.id }}</span>
+                    <span><strong>Description:</strong> {{ getDescription(item) }}</span>
+                    <span><strong>Content Type:</strong> {{ item.content_type || "N/A" }}</span>
+                    <span><strong>Size:</strong> {{ formatBytes(item.size) }}</span>
+                    <span><strong>Uploaded:</strong> {{ formatDate(item.uploaded_at) }}</span>
+                    <span><strong>Owner ID:</strong> {{ item.owner_id ?? "N/A" }}</span>
+                  </div>
+                </div>
+                <div class="item-actions">
+                  <button class="edit-btn" @click.stop="goToEditItem(item.id)">Edit</button>
+                  <label class="select-checkbox" @click.stop>
+                    <input
+                      type="checkbox"
+                      :checked="selectedIds.includes(item.id)"
+                      @change="toggleSelect(item.id)"
+                      aria-label="Select item"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
   </div>
 </template>
 
 <script>
-import { listFiles } from "../api.js";
+import { deleteFile, downloadFile, listFiles } from "../api.js";
+import { readFileMetadataMap } from "../utils/fileMetadata.js";
 
 export default {
   name: "StoredItems",
@@ -67,29 +170,97 @@ export default {
     return {
       items: [],
       searchQuery: "",
+      activeTagFilters: [],
+      isTagSidebarCollapsed: false,
+      selectedIds: [],
+      focusedItemId: null,
+      deletingItemId: null,
+      deletingMultiple: false,
+      downloadingMultiple: false,
+      fileMetadataMap: {},
       loading: false,
       error: null,
     };
   },
   computed: {
+    availableTags() {
+      const tagSet = new Set();
+
+      this.items.forEach((item) => {
+        const itemTags = Array.isArray(item.tags) ? item.tags : [];
+        itemTags.forEach((tag) => {
+          const tagName = String(tag?.name || "").trim().toLowerCase();
+          if (tagName) tagSet.add(tagName);
+        });
+      });
+
+      return Array.from(tagSet).sort((tagA, tagB) => tagA.localeCompare(tagB));
+    },
+    tagSidebarMessage() {
+      if (this.items.length === 0) {
+        return "No tags and no items in the database.";
+      }
+      return "No tags were generated.";
+    },
     filteredItems() {
       const query = this.searchQuery.trim().toLowerCase();
-      if (!query) return this.items;
-
       return this.items.filter((item) => {
-        const originalName = String(item.original_filename || "").toLowerCase();
+        const originalName = String(this.getDisplayName(item) || "").toLowerCase();
         const storedName = String(item.filename || "").toLowerCase();
-        return originalName.includes(query) || storedName.includes(query);
+        const description = String(this.getDescription(item) || "").toLowerCase();
+        const matchesName =
+          !query ||
+          originalName.includes(query) ||
+          storedName.includes(query) ||
+          description.includes(query);
+
+        if (!matchesName) return false;
+
+        if (this.activeTagFilters.length === 0) return true;
+
+        const itemTagNames = new Set(
+          (Array.isArray(item.tags) ? item.tags : [])
+            .map((tag) => String(tag?.name || "").trim().toLowerCase())
+            .filter(Boolean)
+        );
+
+        return this.activeTagFilters.every((tagName) => itemTagNames.has(tagName));
       });
+    },
+    selectedCount() {
+      return this.selectedIds.length;
+    },
+    hasSelectedItem() {
+      return this.selectedCount > 0;
     },
   },
   mounted() {
     this.fetchItems();
   },
   methods: {
+    loadMetadataMap() {
+      this.fileMetadataMap = readFileMetadataMap();
+    },
+    getDisplayName(item) {
+      const overrideName = this.fileMetadataMap?.[String(item.id)]?.displayName;
+      if (overrideName && String(overrideName).trim()) {
+        return String(overrideName).trim();
+      }
+      return item.original_filename || "Unnamed file";
+    },
+    getDescription(item) {
+      const description = this.fileMetadataMap?.[String(item.id)]?.description;
+      if (description && String(description).trim()) {
+        return String(description).trim();
+      }
+      return "N/A";
+    },
     handleLogout() {
       localStorage.removeItem("token");
       this.$router.push("/");
+    },
+    goToEditItem(itemId) {
+      this.$router.push(`/cloud/edit/${itemId}`);
     },
     goToAddItem() {
       this.$router.push("/cloud/add");
@@ -106,13 +277,150 @@ export default {
       if (Number.isNaN(parsed.getTime())) return "N/A";
       return parsed.toLocaleString();
     },
-    formatTags(tags) {
-      if (!Array.isArray(tags) || tags.length === 0) return "None";
-      return tags.map((tag) => tag.name).join(", ");
+    toggleTagFilter(tagName) {
+      if (this.activeTagFilters.includes(tagName)) {
+        this.activeTagFilters = this.activeTagFilters.filter((tag) => tag !== tagName);
+        return;
+      }
+      this.activeTagFilters = [...this.activeTagFilters, tagName];
+    },
+    clearTagFilters() {
+      this.activeTagFilters = [];
+    },
+    toggleTagSidebar() {
+      this.isTagSidebarCollapsed = !this.isTagSidebarCollapsed;
+    },
+    toggleSelect(itemId) {
+      this.error = null;
+      const idx = this.selectedIds.indexOf(itemId);
+      if (idx === -1) this.selectedIds = [...this.selectedIds, itemId];
+      else this.selectedIds = this.selectedIds.filter((id) => id !== itemId);
+    },
+
+    async removeSelectedItems() {
+      if (!this.hasSelectedItem || this.deletingMultiple) return;
+      this.error = null;
+      this.deletingMultiple = true;
+
+      const idsToDelete = [...this.selectedIds];
+      try {
+        // Perform parallel deletes; if one fails, capture and continue
+        await Promise.all(idsToDelete.map((id) => deleteFile(id)));
+        this.items = this.items.filter((item) => !idsToDelete.includes(item.id));
+        this.selectedIds = [];
+      } catch (err) {
+        this.error = err?.response?.data?.detail || err?.message ||
+          "Failed to delete one or more items.";
+      } finally {
+        this.deletingMultiple = false;
+      }
+    },
+    async downloadSelectedItems() {
+      if (!this.hasSelectedItem || this.downloadingMultiple) return;
+      this.error = null;
+      this.downloadingMultiple = true;
+
+      const idsToDownload = [...this.selectedIds];
+      const errors = [];
+
+      for (const id of idsToDownload) {
+        try {
+          const response = await downloadFile(id);
+          const blob = new Blob([response.data], {
+            type: response.headers?.["content-type"] || "application/octet-stream",
+          });
+
+          const disposition = response.headers?.["content-disposition"] || "";
+          const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+          const responseFilename = decodeURIComponent(
+            filenameMatch?.[1] || filenameMatch?.[2] || ""
+          ).trim();
+
+          const item = this.items.find((it) => it.id === id) || {};
+          const fallbackFilename = this.getDisplayName(item) || item.filename || `file-${id}`;
+          const targetFilename = responseFilename || fallbackFilename;
+
+          const downloadUrl = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = targetFilename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(downloadUrl);
+        } catch (err) {
+          errors.push(err);
+        }
+      }
+
+      if (errors.length) {
+        this.error = errors[0]?.response?.data?.detail || errors[0]?.message ||
+          "One or more downloads failed.";
+      }
+
+      this.downloadingMultiple = false;
+    },
+    async downloadFocusedItem() {
+      const id = this.focusedItemId;
+      if (!id || this.downloadingMultiple) return;
+      this.error = null;
+      this.downloadingMultiple = true;
+
+      try {
+        const response = await downloadFile(id);
+        const blob = new Blob([response.data], {
+          type: response.headers?.["content-type"] || "application/octet-stream",
+        });
+
+        const disposition = response.headers?.["content-disposition"] || "";
+        const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+        const responseFilename = decodeURIComponent(
+          filenameMatch?.[1] || filenameMatch?.[2] || ""
+        ).trim();
+
+        const item = this.items.find((it) => it.id === id) || {};
+        const fallbackFilename = this.getDisplayName(item) || item.filename || `file-${id}`;
+        const targetFilename = responseFilename || fallbackFilename;
+
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = targetFilename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(downloadUrl);
+      } catch (err) {
+        this.error = err?.response?.data?.detail || err?.message || "Failed to download item.";
+      } finally {
+        this.downloadingMultiple = false;
+      }
+    },
+
+    async removeFocusedItem() {
+      const id = this.focusedItemId;
+      if (!id || this.deletingItemId !== null) return;
+      await this.handleDelete(id);
+      if (this.focusedItemId === id) this.focusedItemId = null;
+    },
+    async handleDelete(itemId) {
+      this.error = null;
+      this.deletingItemId = itemId;
+
+      try {
+        await deleteFile(itemId);
+        this.items = this.items.filter((item) => item.id !== itemId);
+        this.selectedIds = this.selectedIds.filter((id) => id !== itemId);
+      } catch (err) {
+        this.error = err?.response?.data?.detail || err.message || "Failed to delete item.";
+      } finally {
+        this.deletingItemId = null;
+      }
     },
     async fetchItems() {
       this.loading = true;
       this.error = null;
+      this.loadMetadataMap();
 
       try {
         const response = await listFiles();
@@ -135,20 +443,151 @@ export default {
 
 <style scoped>
 .page {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 24px 24px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   font-family: Arial, sans-serif;
   background: #f7f9fc;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .navbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 0;
-  margin-bottom: 16px;
+  padding: 16px 24px;
+  margin-bottom: 0;
+}
+
+.content-layout {
+  position: relative;
+  display: flex;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  --sidebar-width: 280px;
+}
+
+.sidebar-toggle-btn {
+  position: absolute;
+  top: 12px;
+  left: calc(var(--sidebar-width) + 8px);
+  transform: translateX(-100%);
+  z-index: 20;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sidebar-toggle-btn:hover {
+  background: #eff6ff;
+}
+
+.tags-sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: white;
+  border-right: 1px solid #dbeafe;
+  border-left: none;
+  border-top: none;
+  border-bottom: none;
+  border-radius: 0;
+  padding: 14px;
+  min-height: calc(100vh - 74px);
+  max-height: calc(100vh - 74px);
+  overflow-y: auto;
+  transition: width 0.22s ease, min-width 0.22s ease;
+}
+
+.tags-sidebar.collapsed {
+  padding: 14px 10px;
+}
+
+.sidebar-title {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1.05rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-subtitle {
+  margin: 6px 0 12px;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.clear-filters-btn {
+  width: 100%;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.clear-filters-btn:hover {
+  background: #dbeafe;
+}
+
+.tags-empty-state {
+  color: #64748b;
+  font-size: 0.92rem;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.tags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag-chip {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-transform: lowercase;
+}
+
+.tag-chip:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.tag-chip.active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-weight: 600;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 24px 24px;
 }
 
 .navbar-brand {
@@ -251,6 +690,7 @@ export default {
   color: white;
   border-radius: 8px;
   min-height: 42px;
+  min-width: 140px;
   padding: 0 12px;
   font-size: 14px;
   font-weight: 600;
@@ -260,6 +700,32 @@ export default {
 
 .add-btn:hover {
   background: #1d4ed8;
+}
+
+.remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #ef4444;
+  color: white;
+  border-radius: 8px;
+  min-height: 42px;
+  min-width: 140px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.remove-btn:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.remove-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .error-box {
@@ -300,22 +766,144 @@ export default {
   color: #444;
 }
 
-.items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 16px;
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.item-card {
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+.item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
 }
 
-.item-card h2 {
-  margin-top: 0;
-  margin-bottom: 12px;
+.item-row:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.item-row:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.item-row.selected {
+  border-color: #2563eb;
+  background: #dbeafe;
+}
+
+.item-row-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-row-title {
+  font-weight: 700;
   color: #1f2937;
+  margin-bottom: 6px;
 }
+
+.item-row-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 4px 14px;
+  font-size: 0.92rem;
+  color: #334155;
+}
+
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-btn {
+  flex-shrink: 0;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edit-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.edit-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.download-btn {
+  /* default styling for small inline download buttons (per-row)
+     Top-level download button in the controls row is overridden below */
+  flex-shrink: 0;
+  border: none;
+  background: #0f766e;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.download-btn:hover:not(:disabled) {
+  background: #0d9488;
+}
+
+.download-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Make the top controls buttons consistent */
+.controls .download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  min-width: 140px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.controls .download-btn:hover:not(:disabled) {
+  background: #0d9488;
+}
+
+.delete-btn {
+  flex-shrink: 0;
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.delete-btn:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.delete-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 </style>
