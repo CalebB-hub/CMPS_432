@@ -21,7 +21,10 @@
           @click="navigateToTag(result.tag.id, result.path)"
           :title="`Go to ${result.fullPath.join(' / ')}`"
         >
-          <span class="result-path">{{ result.fullPath.join(' / ') }}</span>
+          <div class="result-main">
+            <div class="result-title">{{ result.tag.name }}</div>
+            <div class="result-subpath">{{ displayPath(result.fullPath) }}</div>
+          </div>
           <span class="result-arrow">→</span>
         </button>
       </div>
@@ -148,6 +151,41 @@ function searchHierarchy(tagsList, searchTerm, currentPath = [], currentPathName
 const searchResults = computed(() => {
   return searchHierarchy(tags.value, searchTerm.value)
 })
+
+/**
+ * Return a display-friendly path string, truncating long paths to keep the
+ * trailing context visible. For example, if the full path is
+ * ["Technology","Phone","Mobile Phone","Apple","IPhone 16"] and
+ * maxSegments is 4, this returns "... / Mobile Phone / Apple / IPhone 16".
+ */
+function displayPath(fullPath, maxChars = 45) {
+  if (!Array.isArray(fullPath) || fullPath.length === 0) return ''
+
+  const sep = ' / '
+  const joined = fullPath.join(sep)
+  if (joined.length <= maxChars) return joined
+
+  // Build trailing segments until we reach the char budget (reserve for the leading '... / ')
+  const budget = Math.max(10, maxChars - 6) // ensure some room for content
+  const parts = []
+  let used = 0
+
+  for (let i = fullPath.length - 1; i >= 0; i--) {
+    const seg = String(fullPath[i] || '')
+    const segLen = (parts.length === 0 ? 0 : sep.length) + seg.length
+    if (used + segLen > budget) break
+    parts.unshift(seg)
+    used += segLen
+  }
+
+  // If nothing fit (very small budget), always show the last segment (may overflow CSS will ellipsize)
+  if (parts.length === 0) {
+    const last = String(fullPath[fullPath.length - 1] || '')
+    return '... / ' + last
+  }
+
+  return '... / ' + parts.join(sep)
+}
 
 function findTagById(tagsList, tagId) {
   for (const tag of tagsList) {
@@ -337,6 +375,9 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px; /* room for scrollbar */
 }
 
 .search-result-item {
@@ -370,6 +411,33 @@ onMounted(async () => {
   margin-left: 0.5rem;
   color: #3b82f6;
   font-weight: bold;
+}
+
+.result-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.result-title {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-subpath {
+  font-size: 0.78rem;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0; /* ensure it can shrink inside flex */
 }
 
 .root-actions {
