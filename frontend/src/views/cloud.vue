@@ -1,15 +1,5 @@
 <template>
     <div class="page">
-        <!-- <nav class="navbar">
-      <div class="navbar-brand">☁ Cloud Distributions</div>
-      <div class="navbar-links">
-        <router-link to="/dashboard" class="nav-link">Dashboard</router-link>
-        <router-link to="/settings" class="nav-link">Settings</router-link>
-        <router-link to="/" class="nav-link">Home</router-link>
-        <button class="nav-btn" @click="handleLogout">Logout</button>
-      </div>
-    </nav> -->
-
         <div
             class="content-layout"
             :style="{
@@ -24,9 +14,7 @@
                 class="tags-sidebar"
                 :class="{ collapsed: isTagSidebarCollapsed }"
             >
-                <h2 class="sidebar-title">
-                    {{ isTagSidebarCollapsed ? 'Tags' : 'Tags' }}
-                </h2>
+                <h2 class="sidebar-title">Tags</h2>
                 <p v-if="!isTagSidebarCollapsed" class="sidebar-subtitle">
                     Filter cloud items by one or more tags.
                 </p>
@@ -65,17 +53,46 @@
                     <button class="add-btn" @click="goToAddItem">
                         Add Item
                     </button>
-                    <button
-                        class="remove-btn"
-                        :disabled="!hasSelectedItem || deletingItemId !== null"
-                        @click="removeSelectedItem"
-                    >
-                        {{
-                            deletingItemId !== null && hasSelectedItem
-                                ? 'Removing...'
-                                : 'Remove Item'
-                        }}
-                    </button>
+                    <template v-if="hasSelectedItem">
+                        <button
+                            class="remove-btn"
+                            :disabled="deletingMultiple"
+                            @click="removeSelectedItems"
+                        >
+                            {{
+                                deletingMultiple
+                                    ? 'Removing...'
+                                    : `Remove Selected (${selectedCount})`
+                            }}
+                        </button>
+                        <button
+                            class="download-btn top-download"
+                            :disabled="downloadingMultiple"
+                            @click="downloadSelectedItems"
+                        >
+                            {{
+                                downloadingMultiple
+                                    ? 'Downloading...'
+                                    : `Download Selected (${selectedCount})`
+                            }}
+                        </button>
+                    </template>
+                    <template v-else>
+                        <button
+                            class="remove-btn"
+                            :disabled="!focusedItemId || deletingItemId !== null"
+                            @click="removeFocusedItem"
+                        >
+                            {{ deletingItemId !== null ? 'Removing...' : 'Remove' }}
+                        </button>
+                        <button
+                            class="download-btn top-download"
+                            :disabled="!focusedItemId || downloadingMultiple"
+                            @click="downloadFocusedItem"
+                        >
+                            {{ downloadingMultiple ? 'Downloading...' : 'Download' }}
+                        </button>
+                    </template>
                 </section>
 
                 <section v-if="error" class="error-box">
@@ -108,13 +125,15 @@
                                 :key="item.id"
                                 class="item-row"
                                 :class="{
-                                    selected: selectedItemId === item.id,
+                                    selected:
+                                        selectedIds.includes(item.id) ||
+                                        focusedItemId === item.id,
                                 }"
                                 role="button"
                                 tabindex="0"
-                                @click="selectItem(item.id)"
-                                @keydown.enter.prevent="selectItem(item.id)"
-                                @keydown.space.prevent="selectItem(item.id)"
+                                @click="focusItem(item.id)"
+                                @keydown.enter.prevent="focusItem(item.id)"
+                                @keydown.space.prevent="focusItem(item.id)"
                             >
                                 <div class="item-row-content">
                                     <div class="item-row-title">
@@ -147,25 +166,18 @@
                                 <div class="item-actions">
                                     <button
                                         class="edit-btn"
-                                        :disabled="selectedItemId !== item.id"
                                         @click.stop="goToEditItem(item.id)"
                                     >
                                         Edit
                                     </button>
-                                    <button
-                                        class="download-btn"
-                                        :disabled="downloadingItemId === item.id || selectedItemId !== item.id"
-                                        @click.stop="handleDownload(item)"
-                                    >
-                                        {{ downloadingItemId === item.id ? 'Downloading...' : 'Download' }}
-                                    </button>
-                                    <button
-                                        class="delete-btn"
-                                        :disabled="deletingItemId === item.id || selectedItemId !== item.id"
-                                        @click.stop="handleDelete(item.id)"
-                                    >
-                                        {{ deletingItemId === item.id ? 'Deleting...' : 'Delete' }}
-                                    </button>
+                                    <label class="select-checkbox" @click.stop>
+                                        <input
+                                            type="checkbox"
+                                            :checked="selectedIds.includes(item.id)"
+                                            @change="toggleSelect(item.id)"
+                                            aria-label="Select item"
+                                        />
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -173,8 +185,6 @@
                 </section>
             </main>
         </div>
-    </div>
-</template>
     </div>
 </template>
 
@@ -194,9 +204,11 @@ export default {
             searchQuery: "",
             activeTagFilters: [],
             isTagSidebarCollapsed: false,
-            selectedItemId: null,
+            selectedIds: [],
+            focusedItemId: null,
             deletingItemId: null,
-            downloadingItemId: null,
+            deletingMultiple: false,
+            downloadingMultiple: false,
             fileMetadataMap: {},
             loading: false,
             error: null,
@@ -234,8 +246,11 @@ export default {
                 );
             });
         },
+        selectedCount() {
+            return this.selectedIds.length;
+        },
         hasSelectedItem() {
-            return this.items.some((item) => item.id === this.selectedItemId);
+            return this.selectedCount > 0;
         },
     },
     mounted() {
@@ -296,67 +311,146 @@ export default {
         toggleTagSidebar() {
             this.isTagSidebarCollapsed = !this.isTagSidebarCollapsed;
         },
-        selectItem(itemId) {
-            this.selectedItemId = itemId;
+        focusItem(itemId) {
+            this.focusedItemId = itemId;
             this.error = null;
         },
-        async removeSelectedItem() {
-            if (!this.hasSelectedItem || this.deletingItemId !== null) return;
-            await this.handleDelete(this.selectedItemId);
-        },
-        async handleDownload(item) {
-            const itemId = item?.id;
-            if (!itemId) return;
-
-            this.selectedItemId = itemId;
+        toggleSelect(itemId) {
             this.error = null;
-            this.downloadingItemId = itemId;
-
-            try {
-                const response = await downloadFile(itemId);
-                const blob = new Blob([response.data], {
-                    type: response.headers?.["content-type"] || "application/octet-stream",
-                });
-
-                const disposition = response.headers?.["content-disposition"] || "";
-                const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
-                const rawFilename = filenameMatch?.[1] || filenameMatch?.[2] || "";
-                let responseFilename = "";
-                if (rawFilename) {
-                    try {
-                        responseFilename = decodeURIComponent(rawFilename).trim();
-                    } catch {
-                        responseFilename = rawFilename.trim();
-                    }
-                }
-
-                const fallbackFilename = this.getDisplayName(item) || item.filename || `file-${itemId}`;
-                const targetFilename = responseFilename || fallbackFilename;
-
-                const downloadUrl = URL.createObjectURL(blob);
-                const link = document.createElement("a");
-                link.href = downloadUrl;
-                link.download = targetFilename;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                URL.revokeObjectURL(downloadUrl);
-            } catch (err) {
-                this.error = err?.response?.data?.detail || err.message || "Failed to download item.";
-            } finally {
-                this.downloadingItemId = null;
+            const idx = this.selectedIds.indexOf(itemId);
+            if (idx === -1) {
+                this.selectedIds = [...this.selectedIds, itemId];
+            } else {
+                this.selectedIds = this.selectedIds.filter((id) => id !== itemId);
             }
         },
+        getDownloadFilename(response, fallbackFilename) {
+            const disposition = response.headers?.["content-disposition"] || "";
+            const filenameMatch = disposition.match(
+                /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i,
+            );
+            const rawFilename = filenameMatch?.[1] || filenameMatch?.[2] || "";
+
+            if (!rawFilename) {
+                return fallbackFilename;
+            }
+
+            try {
+                return decodeURIComponent(rawFilename).trim() || fallbackFilename;
+            } catch {
+                return rawFilename.trim() || fallbackFilename;
+            }
+        },
+        downloadResponse(response, fallbackFilename) {
+            const blob = new Blob([response.data], {
+                type: response.headers?.["content-type"] || "application/octet-stream",
+            });
+            const targetFilename = this.getDownloadFilename(response, fallbackFilename);
+
+            const downloadUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = downloadUrl;
+            link.download = targetFilename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(downloadUrl);
+        },
+        async removeSelectedItems() {
+            if (!this.hasSelectedItem || this.deletingMultiple) return;
+            this.error = null;
+            this.deletingMultiple = true;
+
+            const idsToDelete = [...this.selectedIds];
+            const results = await Promise.allSettled(
+                idsToDelete.map((id) => deleteFile(id)),
+            );
+
+            const deletedIds = idsToDelete.filter(
+                (_, index) => results[index].status === "fulfilled",
+            );
+            const failedResult = results.find((result) => result.status === "rejected");
+
+            if (deletedIds.length > 0) {
+                this.items = this.items.filter((item) => !deletedIds.includes(item.id));
+                this.selectedIds = this.selectedIds.filter((id) => !deletedIds.includes(id));
+                if (deletedIds.includes(this.focusedItemId)) {
+                    this.focusedItemId = null;
+                }
+            }
+
+            if (failedResult) {
+                const err = failedResult.reason;
+                this.error =
+                    err?.response?.data?.detail ||
+                    err?.message ||
+                    "Failed to delete one or more items.";
+            }
+
+            this.deletingMultiple = false;
+        },
+        async downloadSelectedItems() {
+            if (!this.hasSelectedItem || this.downloadingMultiple) return;
+            this.error = null;
+            this.downloadingMultiple = true;
+
+            const idsToDownload = [...this.selectedIds];
+            const errors = [];
+
+            for (const id of idsToDownload) {
+                try {
+                    const response = await downloadFile(id);
+                    const item = this.items.find((it) => it.id === id) || {};
+                    const fallbackFilename =
+                        this.getDisplayName(item) || item.filename || `file-${id}`;
+                    this.downloadResponse(response, fallbackFilename);
+                } catch (err) {
+                    errors.push(err);
+                }
+            }
+
+            if (errors.length) {
+                this.error =
+                    errors[0]?.response?.data?.detail ||
+                    errors[0]?.message ||
+                    "One or more downloads failed.";
+            }
+
+            this.downloadingMultiple = false;
+        },
+        async downloadFocusedItem() {
+            const id = this.focusedItemId;
+            if (!id || this.downloadingMultiple) return;
+            this.error = null;
+            this.downloadingMultiple = true;
+
+            try {
+                const response = await downloadFile(id);
+                const item = this.items.find((it) => it.id === id) || {};
+                const fallbackFilename = this.getDisplayName(item) || item.filename || `file-${id}`;
+                this.downloadResponse(response, fallbackFilename);
+            } catch (err) {
+                this.error = err?.response?.data?.detail || err?.message || "Failed to download item.";
+            } finally {
+                this.downloadingMultiple = false;
+            }
+        },
+        async removeFocusedItem() {
+            const id = this.focusedItemId;
+            if (!id || this.deletingItemId !== null) return;
+            await this.handleDelete(id);
+            if (this.focusedItemId === id) this.focusedItemId = null;
+        },
         async handleDelete(itemId) {
-            this.selectedItemId = itemId;
             this.error = null;
             this.deletingItemId = itemId;
 
             try {
                 await deleteFile(itemId);
                 this.items = this.items.filter((item) => item.id !== itemId);
-                if (this.selectedItemId === itemId) {
-                    this.selectedItemId = null;
+                this.selectedIds = this.selectedIds.filter((id) => id !== itemId);
+                if (this.focusedItemId === itemId) {
+                    this.focusedItemId = null;
                 }
             } catch (err) {
                 this.error = err?.response?.data?.detail || err.message || "Failed to delete item.";
@@ -401,14 +495,6 @@ export default {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-}
-
-.navbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 24px;
-    margin-bottom: 0;
 }
 
 .content-layout {
@@ -497,89 +583,10 @@ export default {
     background: #dbeafe;
 }
 
-.tags-empty-state {
-    color: #64748b;
-    font-size: 0.92rem;
-    background: #f8fafc;
-    border: 1px dashed #cbd5e1;
-    border-radius: 10px;
-    padding: 10px;
-}
-
-.tags-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.tag-chip {
-    border: 1px solid #cbd5e1;
-    background: #f8fafc;
-    color: #334155;
-    border-radius: 8px;
-    padding: 8px 10px;
-    text-align: left;
-    cursor: pointer;
-    font-size: 0.9rem;
-    text-transform: lowercase;
-}
-
-.tag-chip:hover {
-    border-color: #93c5fd;
-    background: #eff6ff;
-}
-
-.tag-chip.active {
-    border-color: #2563eb;
-    background: #dbeafe;
-    color: #1e3a8a;
-    font-weight: 600;
-}
-
 .main-content {
     flex: 1;
     min-width: 0;
     padding: 20px 24px 24px;
-}
-
-.navbar-brand {
-    font-size: 1.35rem;
-    font-weight: 700;
-    color: #1f2937;
-}
-
-.navbar-links {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.nav-link {
-    text-decoration: none;
-    color: #1d4ed8;
-    font-weight: 600;
-    padding: 8px 10px;
-    border-radius: 8px;
-}
-
-.nav-link:hover,
-.nav-link.router-link-active {
-    background: #dbeafe;
-}
-
-.nav-btn {
-    padding: 8px 12px;
-    border: none;
-    background: #ef4444;
-    color: white;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-}
-
-.nav-btn:hover {
-    background: #dc2626;
 }
 
 .header {
@@ -633,20 +640,26 @@ export default {
     cursor: not-allowed;
 }
 
-.add-btn {
+.add-btn,
+.remove-btn,
+.download-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border: none;
-    background: #2563eb;
-    color: white;
-    border-radius: 8px;
     min-height: 42px;
+    min-width: 140px;
     padding: 0 12px;
     font-size: 14px;
     font-weight: 600;
     white-space: nowrap;
     cursor: pointer;
+    border-radius: 8px;
+}
+
+.add-btn {
+    background: #2563eb;
+    color: white;
 }
 
 .add-btn:hover {
@@ -654,19 +667,8 @@ export default {
 }
 
 .remove-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
     background: #ef4444;
     color: white;
-    border-radius: 8px;
-    min-height: 42px;
-    padding: 0 12px;
-    font-size: 14px;
-    font-weight: 600;
-    white-space: nowrap;
-    cursor: pointer;
 }
 
 .remove-btn:hover:not(:disabled) {
@@ -676,6 +678,20 @@ export default {
 .remove-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.download-btn {
+    background: #0f766e;
+    color: #fff;
+}
+
+.download-btn:hover:not(:disabled) {
+    background: #0d9488;
+}
+
+.download-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
 }
 
 .error-box {
@@ -769,57 +785,15 @@ export default {
 }
 
 .item-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .edit-btn {
-  flex-shrink: 0;
-  border: none;
-  background: #2563eb;
-  color: #fff;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.edit-btn:hover:not(:disabled) {
-  background: #1d4ed8;
-}
-
-.edit-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.download-btn {
-  flex-shrink: 0;
-  border: none;
-  background: #0f766e;
-  color: #fff;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.download-btn:hover:not(:disabled) {
-  background: #0d9488;
-}
-
-.download-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.delete-btn {
     flex-shrink: 0;
     border: none;
-    background: #ef4444;
+    background: #2563eb;
     color: #fff;
     border-radius: 8px;
     padding: 8px 12px;
@@ -828,12 +802,76 @@ export default {
     cursor: pointer;
 }
 
-.delete-btn:hover:not(:disabled) {
-    background: #dc2626;
+.edit-btn:hover:not(:disabled) {
+    background: #1d4ed8;
 }
 
-.delete-btn:disabled {
+.edit-btn:disabled {
     cursor: not-allowed;
     opacity: 0.7;
+}
+
+.select-checkbox {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.select-checkbox input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+}
+
+@media (max-width: 900px) {
+    .content-layout {
+        flex-direction: column;
+    }
+
+    .tags-sidebar {
+        width: 100%;
+        min-width: 100%;
+        max-height: none;
+        min-height: auto;
+        border-right: none;
+        border-bottom: 1px solid #dbeafe;
+    }
+
+    .sidebar-toggle-btn {
+        left: 16px;
+        transform: none;
+    }
+
+    .controls {
+        flex-wrap: wrap;
+    }
+
+    .controls input {
+        width: 100%;
+        max-width: none;
+        flex-basis: 100%;
+    }
+
+    .controls .add-btn,
+    .controls .remove-btn,
+    .controls .download-btn {
+        width: 100%;
+    }
+
+    .item-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .item-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
 }
 </style>
