@@ -9,6 +9,24 @@
         aria-label="Search tags"
       />
     </div>
+
+    <!-- Search results with paths -->
+    <div v-if="searchTerm.trim() && searchResults.length > 0" class="search-results-section">
+      <div class="search-results-header">Found {{ searchResults.length }} result(s):</div>
+      <div class="search-results-list">
+        <button
+          v-for="(result, index) in searchResults"
+          :key="index"
+          class="search-result-item"
+          @click="navigateToTag(result.tag.id, result.path)"
+          :title="`Go to ${result.fullPath.join(' / ')}`"
+        >
+          <span class="result-path">{{ result.fullPath.join(' / ') }}</span>
+          <span class="result-arrow">→</span>
+        </button>
+      </div>
+    </div>
+
     <div v-if="viewStack.length > 0" class="tag-navigation-row">
       <button class="tag-nav-btn" @click="goBackOneLevel">
         Back one level
@@ -18,6 +36,14 @@
       </button>
       <div class="tag-nav-path">{{ currentPathLabel }}</div>
     </div>
+
+    <!-- Root level - show "Create new tag" button -->
+    <div v-if="viewStack.length === 0 && tags.length > 0" class="root-actions">
+      <button class="create-root-tag-btn" @click="createRootTag">
+        + New Tag
+      </button>
+    </div>
+
     <div v-if="tags.length === 0" class="tags-empty-state">
       {{ emptyMessage }}
     </div>
@@ -35,10 +61,11 @@
       />
     </div>
 
-    <!-- Form for creating child tag -->
+    <!-- Form for creating child/root tag -->
     <ChildTagForm
       v-if="showChildForm"
       :parent-tag="selectedParentTag"
+      :is-root-tag="isCreatingRootTag"
       @create="handleChildTagCreated"
       @cancel="closeChildForm"
     />
@@ -67,6 +94,7 @@ const emit = defineEmits(['tag-clicked', 'tags-updated'])
 const tagsStore = useTagsStore()
 const showChildForm = ref(false)
 const selectedParentTag = ref(null)
+const isCreatingRootTag = ref(false)
 const viewStack = ref([])
 
 const tags = computed(() => tagsStore.hierarchyTags)
@@ -81,6 +109,45 @@ function tagMatchesOrHasDescendant(tag, term) {
   }
   return false
 }
+
+/**
+ * Search the entire tag hierarchy and return all matching tags with their paths
+ * Returns an array of objects with: { tag, path, fullPath }
+ * path: array of tag IDs from root to this tag
+ * fullPath: array of tag names from root to this tag
+ */
+function searchHierarchy(tagsList, searchTerm, currentPath = [], currentPathNames = []) {
+  const results = []
+  const term = String(searchTerm || '').trim().toLowerCase()
+
+  if (!term) return results
+
+  for (const tag of tagsList) {
+    const tagName = String(tag.name || '').toLowerCase()
+    const newPath = [...currentPath, tag.id]
+    const newPathNames = [...currentPathNames, tag.name]
+
+    // Check if this tag matches the search term
+    if (tagName.includes(term)) {
+      results.push({
+        tag,
+        path: newPath,
+        fullPath: newPathNames,
+      })
+    }
+
+    // Recursively search children
+    const children = Array.isArray(tag.children) ? tag.children : []
+    const childResults = searchHierarchy(children, term, newPath, newPathNames)
+    results.push(...childResults)
+  }
+
+  return results
+}
+
+const searchResults = computed(() => {
+  return searchHierarchy(tags.value, searchTerm.value)
+})
 
 function findTagById(tagsList, tagId) {
   for (const tag of tagsList) {
@@ -160,6 +227,18 @@ function drillDownIntoTag(tagId) {
   viewStack.value = nextPath
 }
 
+/**
+ * Navigate to a specific tag based on search results
+ * path: array of tag IDs from root to target tag
+ */
+function navigateToTag(targetTagId, path) {
+  // Set viewStack to point to the parent of the target tag
+  // path includes the target tag ID, so we exclude the last element
+  viewStack.value = path.slice(0, -1)
+  // Clear search term to see the full context
+  searchTerm.value = ''
+}
+
 function goBackOneLevel() {
   viewStack.value = viewStack.value.slice(0, -1)
 }
@@ -174,16 +253,29 @@ function tagClicked(tagName) {
 
 function addChild(parentTag) {
   selectedParentTag.value = parentTag
+  isCreatingRootTag.value = false
+  showChildForm.value = true
+}
+
+function createRootTag() {
+  selectedParentTag.value = null
+  isCreatingRootTag.value = true
   showChildForm.value = true
 }
 
 async function handleChildTagCreated(name) {
   try {
-    await tagsStore.createChildTagForParent(selectedParentTag.value.id, name)
+    if (isCreatingRootTag.value) {
+      // Create a top-level tag
+      await tagsStore.createTopLevelTag(name)
+    } else {
+      // Create a child tag
+      await tagsStore.createChildTagForParent(selectedParentTag.value.id, name)
+    }
     closeChildForm()
     emit('tags-updated')
   } catch (err) {
-    console.error('Failed to create child tag:', err)
+    console.error('Failed to create tag:', err)
   }
 }
 
@@ -200,6 +292,7 @@ async function deleteTag(tagId) {
 function closeChildForm() {
   showChildForm.value = false
   selectedParentTag.value = null
+  isCreatingRootTag.value = false
 }
 
 watch(tags, () => {
@@ -223,6 +316,86 @@ onMounted(async () => {
 
 .tag-search-row {
   margin-bottom: 8px;
+}
+
+.search-results-section {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background-color: #f0f7ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+}
+
+.search-results-header {
+  color: #1e40af;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.search-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background-color: #fff;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #1f2937;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.search-result-item:hover {
+  background-color: #eff6ff;
+  border-color: #3b82f6;
+}
+
+.result-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-arrow {
+  margin-left: 0.5rem;
+  color: #3b82f6;
+  font-weight: bold;
+}
+
+.root-actions {
+  margin-bottom: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.create-root-tag-btn {
+  padding: 0.5rem 1rem;
+  background-color: #10b981;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.create-root-tag-btn:hover {
+  background-color: #059669;
+}
+
+.create-root-tag-btn:active {
+  transform: scale(0.98);
 }
 
 .tag-navigation-row {
@@ -269,6 +442,13 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.tags-empty-state {
+  color: #888;
+  font-size: 0.9rem;
+  padding: 1rem 0;
+  text-align: center;
 }
 
 .tags-empty-state {

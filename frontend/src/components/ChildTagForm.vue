@@ -1,16 +1,16 @@
 <template>
   <div class="child-tag-form-overlay" @click="handleBackdropClick">
     <div class="child-tag-form" @click.stop>
-      <h3>Add child tag to "{{ parentTag.name }}"</h3>
+      <h3>{{ isRootTag ? 'Create New Tag' : `Add child tag to "${parentTag.name}"` }}</h3>
 
       <form @submit.prevent="handleSubmit">
         <div class="form-group">
-          <label for="child-tag-input">Child Tag Name</label>
+          <label for="child-tag-input">{{ isRootTag ? 'Tag Name' : 'Child Tag Name' }}</label>
           <input
             id="child-tag-input"
             v-model.trim="tagName"
             type="text"
-            placeholder="e.g. iPhone, MacBook"
+            :placeholder="isRootTag ? 'e.g. Electronics, Devices' : 'e.g. iPhone, MacBook'"
             :disabled="loading"
             @keyup.esc="handleCancel"
             autofocus
@@ -40,12 +40,16 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 const props = defineProps({
   parentTag: {
     type: Object,
-    required: true,
+    default: null,
+  },
+  isRootTag: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -54,6 +58,8 @@ const emit = defineEmits(['create', 'cancel'])
 const tagName = ref('')
 const loading = ref(false)
 const error = ref('')
+
+const isRootTag = computed(() => props.isRootTag || !props.parentTag)
 
 async function handleSubmit() {
   if (!tagName.value.trim()) {
