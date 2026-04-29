@@ -1,22 +1,17 @@
 <template>
   <div class="tag-tree-node" :style="{ paddingLeft: `${level * 1.25}rem` }">
-    <!-- Tag container with expand button -->
     <div class="tag-node-header">
-      <!-- Expand/collapse button -->
       <button
-        v-if="children.length > 0"
+        v-if="hasChildren"
         class="expand-btn"
-        :class="{ expanded: isExpanded }"
         @click="toggleExpand"
-        :aria-label="`${isExpanded ? 'Collapse' : 'Expand'} ${tag.name}`"
+        :aria-label="`Show children of ${tag.name}`"
       >
         <span class="chevron">▶</span>
       </button>
 
-      <!-- Placeholder for nodes without children -->
       <div v-else class="expand-placeholder"></div>
 
-      <!-- Tag button -->
       <button
         class="tag-button"
         :class="{ active: activeFilters.includes(tag.name) }"
@@ -25,7 +20,6 @@
         {{ tag.name }}
       </button>
 
-      <!-- Actions menu -->
       <div class="tag-actions">
         <button
           class="action-btn add-child"
@@ -43,31 +37,10 @@
         </button>
       </div>
     </div>
-
-    <!-- Children (with transition) -->
-    <transition name="expand">
-      <div v-if="isExpanded && children.length > 0" class="tag-children">
-        <TagTreeNode
-          v-for="child in children"
-          :key="child.id"
-          :tag="child"
-          :level="level + 1"
-          :active-filters="activeFilters"
-          :expanded-tags="expandedTags"
-          :get-children="getChildren"
-          @toggle-expand="toggleExpand"
-          @tag-clicked="handleChildTagClick"
-          @add-child="handleChildAddChild"
-          @delete-tag="handleChildDelete"
-        />
-      </div>
-    </transition>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-
 const props = defineProps({
   tag: {
     type: Object,
@@ -81,20 +54,11 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
-  expandedTags: {
-    type: Set,
-    default: () => new Set(),
-  },
-  getChildren: {
-    type: Function,
-    required: true,
-  },
 })
 
 const emit = defineEmits(['toggle-expand', 'tag-clicked', 'add-child', 'delete-tag'])
 
-const children = computed(() => props.getChildren(props.tag.id))
-const isExpanded = computed(() => props.expandedTags.has(props.tag.id))
+const hasChildren = Array.isArray(props.tag.children) && props.tag.children.length > 0
 
 function toggleExpand(e) {
   e?.stopPropagation()
@@ -114,18 +78,6 @@ function handleAddChild(e) {
 function handleDelete(e) {
   e?.stopPropagation()
   emit('delete-tag', props.tag.id)
-}
-
-function handleChildTagClick(tagName) {
-  emit('tag-clicked', tagName)
-}
-
-function handleChildAddChild(tag) {
-  emit('add-child', tag)
-}
-
-function handleChildDelete(tagId) {
-  emit('delete-tag', tagId)
 }
 </script>
 
@@ -167,10 +119,6 @@ function handleChildDelete(tagId) {
 .expand-btn:hover {
   color: #333;
   background-color: #e8e8e8;
-}
-
-.expand-btn.expanded .chevron {
-  transform: rotate(90deg);
 }
 
 .chevron {
@@ -245,33 +193,5 @@ function handleChildDelete(tagId) {
 .action-btn.delete-tag:hover {
   background-color: #ffcccc;
   color: #d32f2f;
-}
-
-.tag-children {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-/* Transition animation for expand/collapse */
-.expand-enter-active,
-.expand-leave-active {
-  transition: all 0.2s ease;
-}
-
-.expand-enter-from {
-  opacity: 0;
-  max-height: 0;
-}
-
-.expand-leave-to {
-  opacity: 0;
-  max-height: 0;
-}
-
-.expand-enter-to,
-.expand-leave-from {
-  opacity: 1;
-  max-height: 1000px;
 }
 </style>
