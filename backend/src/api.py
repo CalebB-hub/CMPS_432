@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 db = PocketDB('db.sqlite3')
 s3_service = S3Service()
-app = FastAPI(title="Cloud Storage API")
+app = FastAPI(title="PocketShelf API")
 
 class Item(BaseModel):
     name: str

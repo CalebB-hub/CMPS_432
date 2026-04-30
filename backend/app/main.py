@@ -8,7 +8,7 @@ from app.routers import auth, files, tags
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Cloud Storage API",
+    title="PocketShelf API",
     description="Cloud file storage with tag-based filtering — CMPS 432",
     version="1.0.0",
 )

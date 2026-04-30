@@ -39,7 +39,7 @@
 
             <main class="main-content">
                 <header class="header">
-                    <h1>Cloud Storage Items</h1>
+                    <h1>PocketShelf Items</h1>
                     <p>Files loaded from your local API server</p>
                 </header>
 

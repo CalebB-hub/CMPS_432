@@ -1,4 +1,4 @@
-# CMPS_432 — Cloud Storage
+# CMPS_432 — PocketShelf
 
 AWS-backed cloud file storage with tag filtering, comparable to OneDrive.
 

@@ -1,7 +1,7 @@
 <template>
     <div id="app">
         <nav v-if="auth.user" class="navbar">
-            <span class="brand">☁ Cloud Storage</span>
+            <span class="brand">☁ PocketShelf</span>
             <div class="nav-center">
                 <router-link to="/dashboard" class="nav-link"
                     >Dashboard</router-link

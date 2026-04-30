@@ -2,7 +2,7 @@
     <div class="home-container">
         <!-- Navbar -->
         <nav v-if="!auth.user" class="navbar">
-            <div class="navbar-brand">☁ Cloud Distributions</div>
+            <div class="navbar-brand">☁ PocketShelf</div>
             <div class="navbar-links">
                 <button @click="goToLogin" class="nav-btn login-btn">
                     Login
@@ -17,7 +17,7 @@
         <div class="content">
             <!-- Welcome Section -->
             <div class="welcome-container">
-                <h1>Welcome to Cloud Distributions</h1>
+                <h1>Welcome to PocketShelf</h1>
                 <p>Securely store and manage your files in the cloud.</p>
             </div>
 
