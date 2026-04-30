@@ -135,6 +135,9 @@
                                 @keydown.enter.prevent="focusItem(item.id)"
                                 @keydown.space.prevent="focusItem(item.id)"
                             >
+                                <div class="item-thumbnail" @click.stop>
+                                    <FilePreview :file="item" />
+                                </div>
                                 <div class="item-row-content">
                                     <div class="item-row-title">
                                         {{ getDisplayName(item) }}
@@ -192,11 +195,13 @@
 import { deleteFile, downloadFile, listFiles } from "../api.js";
 import { readFileMetadataMap } from "../utils/fileMetadata.js";
 import HierarchicalTagList from "../components/HierarchicalTagList.vue";
+import FilePreview from "../components/FilePreview.vue";
 
 export default {
     name: "StoredItems",
     components: {
         HierarchicalTagList,
+        FilePreview,
     },
     data() {
         return {
@@ -770,6 +775,11 @@ export default {
     min-width: 0;
 }
 
+.item-thumbnail {
+    flex-shrink: 0;
+    width: 60px;
+}
+
 .item-row-title {
     font-weight: 700;
     color: #1f2937;
@@ -880,6 +890,12 @@ export default {
     .item-row {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .item-thumbnail {
+        width: 100%;
+        display: flex;
+        justify-content: flex-start;
     }
 
     .item-actions {
