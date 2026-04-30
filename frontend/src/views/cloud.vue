@@ -773,15 +773,28 @@ export default {
 .item-row-title {
     font-weight: 700;
     color: #1f2937;
-    margin-bottom: 6px;
+    margin-bottom: 12px;
+    font-size: 1rem;
 }
 
 .item-row-meta {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 4px 14px;
-    font-size: 0.92rem;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px 16px;
+    font-size: 0.875rem;
+    color: #475569;
+}
+
+.item-row-meta span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.item-row-meta strong {
     color: #334155;
+    font-weight: 600;
+    min-width: fit-content;
 }
 
 .item-actions {
