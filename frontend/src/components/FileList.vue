@@ -11,6 +11,7 @@
     <table v-else class="file-table">
       <thead>
         <tr>
+          <th></th>
           <th>Name</th>
           <th>Size</th>
           <th>Tags</th>
@@ -20,6 +21,9 @@
       </thead>
       <tbody>
         <tr v-for="file in files.files" :key="file.id">
+          <td class="preview-cell">
+            <FilePreview :file="file" />
+          </td>
           <td class="filename">{{ file.original_filename }}</td>
           <td>{{ formatSize(file.size) }}</td>
           <td>
@@ -45,6 +49,7 @@
 
 <script setup>
 import { useFilesStore } from '../stores/files.js'
+import FilePreview from './FilePreview.vue'
 
 const files = useFilesStore()
 
@@ -104,10 +109,27 @@ h2 {
   text-transform: uppercase;
 }
 
+.file-table th:first-child {
+  width: 80px;
+  text-align: center;
+  padding: 0.5rem 0.25rem;
+}
+
+.file-table th:last-child {
+  width: 50px;
+  text-align: center;
+}
+
 .file-table td {
   padding: 0.65rem 0.75rem;
   border-bottom: 1px solid #f0f0f0;
   vertical-align: middle;
+}
+
+.preview-cell {
+  text-align: center;
+  padding: 0.5rem 0.25rem;
+  width: 80px;
 }
 
 .filename {
