@@ -1,16 +1,5 @@
 <template>
     <div class="page">
-        <!-- <nav class="navbar">
-            <div class="navbar-brand">☁ Cloud Distributions</div>
-            <div class="navbar-links">
-                <router-link to="/cloud" class="nav-link">Cloud</router-link>
-                <router-link to="/settings" class="nav-link"
-                    >Settings</router-link
-                >
-                <router-link to="/" class="nav-link">Home</router-link>
-            </div>
-        </nav> -->
-
         <header class="header">
             <h1>Add Cloud Item</h1>
             <p>Enter item details, choose tags, and upload your file.</p>
