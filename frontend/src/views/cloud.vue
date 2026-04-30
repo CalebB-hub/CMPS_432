@@ -143,26 +143,29 @@
                                         {{ getDisplayName(item) }}
                                     </div>
                                     <div class="item-row-meta">
-                                        <span><strong>ID:</strong> {{ item.id }}</span>
-                                        <span>
-                                            <strong>Description:</strong>
-                                            {{ getDescription(item) }}
+                                        <span class="meta-field">
+                                            <strong>ID</strong>
+                                            <span class="meta-value">{{ item.id }}</span>
                                         </span>
-                                        <span>
-                                            <strong>Content Type:</strong>
-                                            {{ item.content_type || 'N/A' }}
+                                        <span class="meta-field">
+                                            <strong>Description</strong>
+                                            <span class="meta-value">{{ getDescription(item) }}</span>
                                         </span>
-                                        <span>
-                                            <strong>Size:</strong>
-                                            {{ formatBytes(item.size) }}
+                                        <span class="meta-field">
+                                            <strong>Content Type</strong>
+                                            <span class="meta-value">{{ item.content_type || 'N/A' }}</span>
                                         </span>
-                                        <span>
-                                            <strong>Uploaded:</strong>
-                                            {{ formatDate(item.uploaded_at) }}
+                                        <span class="meta-field">
+                                            <strong>Size</strong>
+                                            <span class="meta-value">{{ formatBytes(item.size) }}</span>
                                         </span>
-                                        <span>
-                                            <strong>Owner ID:</strong>
-                                            {{ item.owner_id ?? 'N/A' }}
+                                        <span class="meta-field">
+                                            <strong>Uploaded</strong>
+                                            <span class="meta-value">{{ formatDate(item.uploaded_at) }}</span>
+                                        </span>
+                                        <span class="meta-field">
+                                            <strong>Owner ID</strong>
+                                            <span class="meta-value">{{ item.owner_id ?? 'N/A' }}</span>
                                         </span>
                                     </div>
                                 </div>
@@ -783,28 +786,51 @@ export default {
 .item-row-title {
     font-weight: 700;
     color: #1f2937;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     font-size: 1rem;
 }
 
 .item-row-meta {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+    padding: 10px 12px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
     font-size: 0.875rem;
     color: #475569;
 }
 
-.item-row-meta span {
+.meta-field {
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
 }
 
-.item-row-meta strong {
-    color: #334155;
+.meta-field strong {
+    color: #64748b;
     font-weight: 600;
-    min-width: fit-content;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.1;
+}
+
+.meta-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #334155;
+    line-height: 1.25;
+}
+
+@media (max-width: 720px) {
+    .item-row-meta {
+        grid-template-columns: 1fr;
+    }
 }
 
 .item-actions {
