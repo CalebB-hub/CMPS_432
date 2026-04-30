@@ -265,7 +265,7 @@ function goBack() {
 .page {
   max-width: 900px;
   margin: 0 auto;
-  padding: 0 24px 24px;
+  padding: 16px 24px 24px;
   font-family: Arial, sans-serif;
   background: #f7f9fc;
   min-height: 100vh;
