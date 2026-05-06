@@ -247,3 +247,54 @@ def test_patch_unknown_tag_with_parent_hint_inherits_full_ancestor_chain(client)
     assert "android" in tag_names
     assert child_name in tag_names
     assert root_name in tag_names
+
+
+def test_upload_new_child_tags_with_new_parent_first_time(client):
+    """Test creating a file with brand new child tags where parent doesn't exist yet.
+    
+    This is the bug scenario: when a user creates an item with child tags for the
+    first time, the child tags should properly register under their parent, not be
+    pushed to the hierarchy root.
+    """
+    _register(client, username="liam", email="liam@example.com")
+    tok = _token(client, username="liam")
+    headers = _auth_headers(tok)
+
+    parent_name = "documents_new"
+    child_name = "receipts_new"
+
+    # Neither parent nor child exist yet
+    r = client.post(
+        "/api/files/",
+        files={"file": ("receipt.pdf", io.BytesIO(b"data"), "application/pdf")},
+        data={
+            "tags": child_name,
+            "tag_parents": json.dumps({child_name: parent_name}),
+        },
+        headers=headers,
+    )
+    assert r.status_code == 201
+
+    # Both tags should be attached to the file
+    tag_names = {t["name"] for t in r.json()["tags"]}
+    assert parent_name in tag_names
+    assert child_name in tag_names
+
+    # The child tag should have the correct parent_id
+    tags = client.get("/api/tags/", headers=headers)
+    assert tags.status_code == 200
+    by_name = {t["name"]: t for t in tags.json()}
+    
+    assert parent_name in by_name, f"Parent tag '{parent_name}' not found in tags"
+    assert child_name in by_name, f"Child tag '{child_name}' not found in tags"
+    
+    parent_tag = by_name[parent_name]
+    child_tag = by_name[child_name]
+    
+    # Parent should be a root-level tag
+    assert parent_tag["parent_id"] is None, f"Parent tag should have no parent, got {parent_tag['parent_id']}"
+    
+    # Child should have parent as its parent
+    assert child_tag["parent_id"] == parent_tag["id"], (
+        f"Child tag parent_id mismatch: expected {parent_tag['id']}, got {child_tag['parent_id']}"
+    )

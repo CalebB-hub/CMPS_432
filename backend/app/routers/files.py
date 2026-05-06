@@ -99,8 +99,23 @@ def _build_expanded_tags(
             normalized_child = _normalize_tag_name(child_name)
             parent_hints[normalized_child] = _normalize_tag_name(parent_name) if parent_name else None
 
+    # Also ensure parent tags are included in processing
+    all_tags_to_process = set(normalized_names)
+    if tag_parents:
+        for parent_name in tag_parents.values():
+            if parent_name:
+                normalized_parent = _normalize_tag_name(parent_name)
+                all_tags_to_process.add(normalized_parent)
+
+    # Sort tags so that parent tags (with no parent_hint) are created before their children
+    # This ensures parents exist in the database when children are created
+    normalized_names_sorted = sorted(
+        all_tags_to_process,
+        key=lambda name: (parent_hints.get(name) is not None, name)
+    )
+
     by_id: Dict[int, models.Tag] = {}
-    for name in normalized_names:
+    for name in normalized_names_sorted:
         tag = _get_or_create_tag(db, name, parent_name=parent_hints.get(name))
         by_id[tag.id] = tag
         for ancestor in _get_ancestor_tags(db, tag):

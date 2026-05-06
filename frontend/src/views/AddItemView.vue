@@ -223,7 +223,21 @@ function addNewTag() {
     if (!exists) {
         const { nameToTag } = tagGraph.value;
         const parentName = normalizeTagName(newTagParentName.value);
-        const parentTag = parentName ? nameToTag.get(parentName) : null;
+        let parentTag = parentName ? nameToTag.get(parentName) : null;
+
+        // If parent doesn't exist yet, create it first
+        if (parentName && !parentTag) {
+            availableTags.value = [
+                ...availableTags.value,
+                {
+                    id: -(availableTags.value.length + 1),
+                    name: parentName,
+                    parent_id: null,
+                },
+            ];
+            // Re-compute tagGraph to include the newly created parent
+            parentTag = { name: parentName, id: -(availableTags.value.length) };
+        }
 
         availableTags.value = [
             ...availableTags.value,
